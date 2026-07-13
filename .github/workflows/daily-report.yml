@@ -1,0 +1,115 @@
+# ============================================================
+# NASDAQ 每日分析报告 - GitHub Actions 自动生成工作流
+#
+# 触发方式：
+#   1. 定时：UTC 21:00（北京时间次日 05:00），周一至周五
+#      对应美股收盘后自动生成当日分析报告
+#   2. 手动：通过 GitHub Actions 界面手动触发（workflow_dispatch）
+# ============================================================
+name: "NASDAQ 每日报告自动生成"
+
+on:
+  # 定时触发：UTC 21:00 = 北京时间 05:00，周一至周五（美股交易日）
+  schedule:
+    - cron: "0 21 * * 1-5"
+  # 支持手动触发
+  workflow_dispatch:
+
+# 功能开关环境变量（Feature Flags）
+# 可通过仓库 Settings → Secrets/Variables 覆盖默认值
+env:
+  ENABLE_BACKTEST: "true"          # 策略回测分析
+  ENABLE_NEWS_SENTIMENT: "true"    # 新闻情绪分析
+  ENABLE_SECTOR_ETF: "true"        # 板块轮动分析
+  ENABLE_COMPARISON: "true"        # 历史报告对比
+  ENABLE_HK_A_SHARE: "false"       # 港股/A股数据（默认关闭）
+  ENABLE_ML_PREDICT: "false"       # ML 价格预测（默认关闭）
+  PYTHONUNBUFFERED: "1"            # 实时输出日志
+  TZ: "Asia/Shanghai"              # 时区：北京时间
+
+jobs:
+  generate-report:
+    name: 生成每日分析报告
+    runs-on: ubuntu-latest
+    timeout-minutes: 10  # 超时限制 10 分钟
+
+    steps:
+      # ----------------------------------------------------------
+      # Step 1: 检出仓库代码
+      # ----------------------------------------------------------
+      - name: 检出仓库代码
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------
+      # Step 2: 配置 Python 运行环境
+      # ----------------------------------------------------------
+      - name: 设置 Python 3.11 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"              # 缓存 pip 依赖，加速构建
+          cache-dependency-path: requirements.txt
+
+      # ----------------------------------------------------------
+      # Step 3: 安装 Python 依赖
+      # ----------------------------------------------------------
+      - name: 安装 Python 依赖
+        run: pip install -r requirements.txt
+
+      # ----------------------------------------------------------
+      # Step 4: 运行分析脚本，生成 HTML 报告
+      # ----------------------------------------------------------
+      - name: 生成 NASDAQ 每日分析报告
+        run: python nasdaq_analyzer.py
+
+      # ----------------------------------------------------------
+      # Step 5: 定位本次生成的报告文件
+      #   报告输出到项目根目录，命名为 nasdaq_report_YYYY-MM-DD.html
+      #   按修改时间取最新一份，避免误传仓库内已提交的旧报告
+      # ----------------------------------------------------------
+      - name: 定位生成的报告文件
+        id: report
+        run: |
+          REPORT_FILE=$(ls -t nasdaq_report_*.html 2>/dev/null | head -1)
+          echo "file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+          if [ -z "$REPORT_FILE" ]; then
+            echo "::warning::未找到生成的报告文件"
+          else
+            echo "找到报告文件: $REPORT_FILE"
+          fi
+
+      # ----------------------------------------------------------
+      # Step 6: 上传 HTML 报告为构建产物（保留 7 天）
+      # ----------------------------------------------------------
+      - name: 上传 HTML 报告为构建产物
+        if: steps.report.outputs.file != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: nasdaq-daily-report-${{ github.run_id }}
+          path: ${{ steps.report.outputs.file }}
+          retention-days: 7          # 产物保留 7 天
+          if-no-files-found: error   # 未找到文件则报错
+
+      # ----------------------------------------------------------
+      # Step 7（可选）: 将报告发布到 gh-pages 分支
+      #   - 仅在报告生成成功时执行
+      #   - keep_files=true 保留历史报告，实现报告归档
+      #   - 使用内置 GITHUB_TOKEN，无需额外配置
+      # ----------------------------------------------------------
+      - name: 准备 gh-pages 部署目录
+        if: steps.report.outputs.file != ''
+        run: |
+          mkdir -p gh-pages-deploy
+          cp "${{ steps.report.outputs.file }}" gh-pages-deploy/
+
+      - name: 部署报告到 gh-pages 分支
+        if: steps.report.outputs.file != ''
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages-deploy
+          publish_branch: gh-pages
+          keep_files: true            # 保留历史报告文件
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "自动发布 NASDAQ 每日报告 ${{ steps.report.outputs.file }}"

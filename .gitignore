@@ -29,3 +29,8 @@ desktop.ini
 # Project specific
 .trae/
 *.log
+
+# 运行时数据（不纳入版本控制）
+data/
+reports/
+output/

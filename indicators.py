@@ -8,7 +8,8 @@ import pandas as pd
 import numpy as np
 from config import (
     MA_PERIODS, RSI_PERIOD, MACD_FAST, MACD_SLOW, MACD_SIGNAL,
-    KDJ_PERIOD, BOLL_PERIOD, BOLL_STD
+    KDJ_PERIOD, BOLL_PERIOD, BOLL_STD,
+    ATR_PERIOD, WR_PERIOD, CCI_PERIOD, VWAP_PERIOD
 )
 
 
@@ -90,6 +91,81 @@ def calc_bollinger(df, period=BOLL_PERIOD, std_mult=BOLL_STD):
     return df
 
 
+def calc_atr(df, period=ATR_PERIOD):
+    """
+    计算 ATR 平均真实波幅
+    TR = max(H-L, |H-C_prev|, |L-C_prev|)
+    ATR = Wilder 平滑 TR
+    用于设置止损位、衡量波动风险
+    """
+    high_low = df["High"] - df["Low"]
+    high_close_prev = (df["High"] - df["Close"].shift(1)).abs()
+    low_close_prev = (df["Low"] - df["Close"].shift(1)).abs()
+    tr = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1)
+    # Wilder 平滑 = EMA with alpha = 1/period
+    df["ATR"] = tr.ewm(alpha=1.0 / period, adjust=False).mean()
+    return df
+
+
+def calc_obv(df):
+    """
+    计算 OBV 能量潮
+    上涨日累加成交量，下跌日累减
+    用于量价关系验证趋势，发现量价背离
+    """
+    direction = df["Close"].diff().apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+    df["OBV"] = (direction * df["Volume"]).cumsum()
+    return df
+
+
+def calc_williams_r(df, period=WR_PERIOD):
+    """
+    计算威廉指标 WR(14)
+    WR = (Hn - Close) / (Hn - Ln) * (-100)
+    超买: WR > -20, 超卖: WR < -80
+    与 KDJ 互补
+    """
+    high_n = df["High"].rolling(window=period).max()
+    low_n = df["Low"].rolling(window=period).min()
+    denom = high_n - low_n
+    denom = denom.replace(0, np.nan)
+    df["WR"] = (high_n - df["Close"]) / denom * (-100)
+    df["WR"] = df["WR"].fillna(-50)  # 无波动时取中值
+    return df
+
+
+def calc_cci(df, period=CCI_PERIOD):
+    """
+    计算 CCI 商品通道指标(20)
+    TP = (High + Low + Close) / 3
+    CCI = (TP - SMA(TP)) / (0.015 * MeanDeviation(TP))
+    识别极端行情与拐点，±100 阈值
+    """
+    tp = (df["High"] + df["Low"] + df["Close"]) / 3
+    tp_sma = tp.rolling(window=period).mean()
+    # 平均绝对偏差
+    mean_dev = tp.rolling(window=period).apply(
+        lambda x: np.abs(x - x.mean()).mean(), raw=True
+    )
+    mean_dev = mean_dev.replace(0, np.nan)
+    df["CCI"] = (tp - tp_sma) / (0.015 * mean_dev)
+    df["CCI"] = df["CCI"].fillna(0)
+    return df
+
+
+def calc_vwap(df, period=VWAP_PERIOD):
+    """
+    计算 VWAP 成交量加权均价（滚动 20 日）
+    VWAP = Σ(Close × Volume) / ΣVolume
+    机构成本参考线，判断多空成本区
+    """
+    close_vol = df["Close"] * df["Volume"]
+    vol_sum = df["Volume"].rolling(window=period).sum()
+    vol_sum = vol_sum.replace(0, np.nan)
+    df["VWAP"] = close_vol.rolling(window=period).sum() / vol_sum
+    return df
+
+
 def calc_all_indicators(df):
     """一次性计算所有技术指标"""
     if df is None or df.empty:
@@ -99,4 +175,9 @@ def calc_all_indicators(df):
     df = calc_rsi(df)
     df = calc_kdj(df)
     df = calc_bollinger(df)
+    df = calc_atr(df)
+    df = calc_obv(df)
+    df = calc_williams_r(df)
+    df = calc_cci(df)
+    df = calc_vwap(df)
     return df

@@ -139,6 +139,38 @@ def generate_signals(df):
             elif prev_close > prev_ma20 and last_close < last_ma20:
                 signals.append({"type": "下穿MA20", "level": "看空", "severity": "medium"})
 
+    # --- 威廉指标 WR 超买/超卖 ---
+    if "WR" in df.columns:
+        wr_val = last.get("WR")
+        if wr_val is not None and not (isinstance(wr_val, float) and np.isnan(wr_val)):
+            if wr_val > -20:
+                signals.append({"type": f"WR超买({wr_val:.1f})", "level": "看空", "severity": "low"})
+            elif wr_val < -80:
+                signals.append({"type": f"WR超卖({wr_val:.1f})", "level": "看多", "severity": "low"})
+
+    # --- CCI 突破 ±100 ---
+    if "CCI" in df.columns:
+        cci_val = last.get("CCI")
+        prev_cci = prev.get("CCI")
+        if all(v is not None and not (isinstance(v, float) and np.isnan(v))
+               for v in [cci_val, prev_cci]):
+            if prev_cci <= 100 and cci_val > 100:
+                signals.append({"type": f"CCI突破+100({cci_val:.0f})", "level": "看多", "severity": "low"})
+            elif prev_cci >= -100 and cci_val < -100:
+                signals.append({"type": f"CCI跌破-100({cci_val:.0f})", "level": "看空", "severity": "low"})
+
+    # --- VWAP 多空成本参考 ---
+    if "VWAP" in df.columns:
+        vwap_val = last.get("VWAP")
+        close_val = last.get("Close")
+        if all(v is not None and not (isinstance(v, float) and np.isnan(v))
+               for v in [vwap_val, close_val]):
+            deviation = (close_val - vwap_val) / vwap_val * 100
+            if deviation > 2:
+                signals.append({"type": f"价格高于VWAP {deviation:.1f}%", "level": "看多", "severity": "low"})
+            elif deviation < -2:
+                signals.append({"type": f"价格低于VWAP {deviation:.1f}%", "level": "看空", "severity": "low"})
+
     return signals
 
 

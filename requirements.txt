@@ -1,3 +1,19 @@
-yfinance>=0.2.0
-pandas>=2.0.0
-jinja2>=3.1.0
+# ===========================================
+# NASDAQ 每日分析报告 - Python 依赖
+# ===========================================
+
+# --- 核心依赖（必需）---
+yfinance>=0.2.0          # 美股行情数据源
+pandas>=2.0.0            # 数据处理与技术指标计算
+jinja2>=3.1.0            # HTML 报告模板引擎
+
+# --- 可选依赖：新闻情绪分析 ---
+# pip install akshare
+akshare>=1.10.0          # A股/港股新闻数据源（ENABLE_NEWS_SENTIMENT）
+
+# --- 可选依赖：港股/A股数据 ---
+# 已由 akshare 覆盖（ENABLE_HK_A_SHARE）
+
+# --- 可选依赖：ML 预测（默认关闭 ENABLE_ML_PREDICT）---
+# pip install scikit-learn
+# scikit-learn>=1.3.0     # 机器学习价格预测
