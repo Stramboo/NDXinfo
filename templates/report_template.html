@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NASDAQ 每日分析报告 - {{ report_date }}</title>
+    <script src="echarts.min.js"></script>
+    <script>
+        // 如果本地 ECharts 加载失败，回退到 CDN
+        if (typeof echarts === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>');
+        }
+    </script>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: #1c2128;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-yellow: #d29922;
+            --accent-purple: #bc8cff;
+            --shadow: 0 2px 8px rgba(0,0,0,0.3);
+            --radius: 8px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        /* 报告头部 */
+        .report-header {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            padding: 30px; border-radius: var(--radius);
+            border: 1px solid var(--border-color); margin-bottom: 20px;
+        }
+        .report-header h1 { font-size: 28px; color: var(--accent-blue); margin-bottom: 8px; }
+        .report-meta { color: var(--text-secondary); font-size: 13px; }
+
+        /* 卡片网格 */
+        .grid { display: grid; gap: 20px; margin-bottom: 20px; }
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+        @media (max-width: 768px) {
+            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+        }
+
+        /* 指标卡片 */
+        .card {
+            background: var(--bg-card); border: 1px solid var(--border-color);
+            border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow);
+        }
+        .card-title {
+            font-size: 13px; color: var(--text-secondary);
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;
+            font-weight: 600;
+        }
+        .card-section-title {
+            font-size: 18px; color: var(--text-primary);
+            font-weight: 700; margin-bottom: 15px; padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .metric-value { font-size: 26px; font-weight: 700; }
+        .metric-sub { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+        .metric-change.up { color: var(--accent-green); font-size: 16px; font-weight: 600; }
+        .metric-change.down { color: var(--accent-red); font-size: 16px; font-weight: 600; }
+        .metric-change.neutral { color: var(--text-secondary); font-size: 16px; font-weight: 600; }
+
+        /* 图表容器 */
+        .chart-container { width: 100%; height: 400px; }
+        .chart-container.tall { height: 500px; }
+        .chart-container.short { height: 250px; }
+
+        /* 信号标签 */
+        .signal-badge {
+            display: inline-block; padding: 4px 12px; border-radius: 12px;
+            font-size: 12px; font-weight: 600; margin: 4px 4px 4px 0;
+        }
+        .signal-badge.bull { background: rgba(63,185,80,0.15); color: var(--accent-green); border: 1px solid rgba(63,185,80,0.3); }
+        .signal-badge.bear { background: rgba(248,81,73,0.15); color: var(--accent-red); border: 1px solid rgba(248,81,73,0.3); }
+        .signal-badge.neutral { background: rgba(210,153,34,0.15); color: var(--accent-yellow); border: 1px solid rgba(210,153,34,0.3); }
+
+        /* 趋势指示器 */
+        .trend-indicator {
+            display: inline-block; padding: 6px 16px; border-radius: 6px;
+            font-size: 16px; font-weight: 700;
+        }
+        .trend-indicator.strong_bull { background: rgba(63,185,80,0.2); color: var(--accent-green); }
+        .trend-indicator.bull { background: rgba(63,185,80,0.1); color: var(--accent-green); }
+        .trend-indicator.bear { background: rgba(248,81,73,0.1); color: var(--accent-red); }
+        .trend-indicator.strong_bear { background: rgba(248,81,73,0.2); color: var(--accent-red); }
+        .trend-indicator.sideways { background: rgba(210,153,34,0.1); color: var(--accent-yellow); }
+
+        /* 支撑阻力位 */
+        .sr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+        .sr-item { padding: 10px; border-radius: 6px; text-align: center; }
+        .sr-item.resistance { background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.2); }
+        .sr-item.support { background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.2); }
+        .sr-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; }
+        .sr-value { font-size: 18px; font-weight: 700; margin-top: 4px; }
+
+        /* 股票推荐表格 */
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+        th { color: var(--text-secondary); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        tr:hover { background: var(--bg-secondary); }
+        td.up { color: var(--accent-green); font-weight: 600; }
+        td.down { color: var(--accent-red); font-weight: 600; }
+        .stock-recommendation { font-weight: 700; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+        .stock-recommendation.buy { background: rgba(63,185,80,0.15); color: var(--accent-green); }
+        .stock-recommendation.sell { background: rgba(248,81,73,0.15); color: var(--accent-red); }
+        .stock-recommendation.hold { background: rgba(210,153,34,0.15); color: var(--accent-yellow); }
+
+        /* 板块分组标题 */
+        .sector-group { margin-top: 15px; }
+        .sector-group-title {
+            font-size: 14px; color: var(--accent-blue); font-weight: 700;
+            margin-bottom: 8px; padding: 6px 12px; background: var(--bg-secondary);
+            border-radius: 4px; border-left: 3px solid var(--accent-blue);
+        }
+
+        /* 涨幅榜列表 */
+        .gainer-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0; border-bottom: 1px solid var(--border-color);
+        }
+        .gainer-rank { font-size: 18px; font-weight: 700; color: var(--text-secondary); width: 30px; }
+        .gainer-info { flex: 1; }
+        .gainer-ticker { font-weight: 700; font-size: 15px; }
+        .gainer-name { font-size: 12px; color: var(--text-secondary); }
+        .gainer-price { text-align: right; }
+        .gainer-change { font-weight: 700; }
+
+        /* 免责声明 */
+        .disclaimer {
+            margin-top: 30px; padding: 20px; background: var(--bg-secondary);
+            border-radius: var(--radius); border: 1px solid var(--border-color);
+            font-size: 12px; color: var(--text-secondary); line-height: 1.8;
+        }
+
+        /* 加载提示 */
+        .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- 报告头部 -->
+    <div class="report-header">
+        <h1>NASDAQ 每日市场分析报告</h1>
+        <div class="report-meta">
+            生成时间: {{ report_time }} | 数据来源: Yahoo Finance (yfinance) | 仅供参考，不构成投资建议
+        </div>
+    </div>
+
+    <!-- 市场概览指标卡片 -->
+    <div class="grid grid-4">
+        <div class="card">
+            <div class="card-title">NASDAQ 综合指数</div>
+            <div class="metric-value">{{ "{:,.2f}".format(ixic_latest.close) if ixic_latest else 'N/A' }}</div>
+            {% if ixic_latest %}
+            <div class="metric-change {{ 'up' if ixic_latest.change_pct > 0 else 'down' if ixic_latest.change_pct < 0 else 'neutral' }}">
+                {{ '+' if ixic_latest.change > 0 }}{{ "{:,.2f}".format(ixic_latest.change) }} ({{ '+' if ixic_latest.change_pct > 0 }}{{ "{:.2f}".format(ixic_latest.change_pct) }}%)
+            </div>
+            {% endif %}
+        </div>
+        <div class="card">
+            <div class="card-title">NASDAQ-100 指数</div>
+            <div class="metric-value">{{ "{:,.2f}".format(ndx_latest.close) if ndx_latest else 'N/A' }}</div>
+            {% if ndx_latest %}
+            <div class="metric-change {{ 'up' if ndx_latest.change_pct > 0 else 'down' if ndx_latest.change_pct < 0 else 'neutral' }}">
+                {{ '+' if ndx_latest.change > 0 }}{{ "{:,.2f}".format(ndx_latest.change) }} ({{ '+' if ndx_latest.change_pct > 0 }}{{ "{:.2f}".format(ndx_latest.change_pct) }}%)
+            </div>
+            {% endif %}
+        </div>
+        <div class="card">
+            <div class="card-title">VIX 恐慌指数</div>
+            <div class="metric-value" style="color: {{ vix_data.color }}">{{ "{:.2f}".format(vix_data.value) if vix_data else 'N/A' }}</div>
+            {% if vix_data %}
+            <div class="metric-sub">{{ vix_data.level }} - {{ vix_data.desc }}</div>
+            {% endif %}
+        </div>
+        <div class="card">
+            <div class="card-title">市场宽度</div>
+            <div class="metric-value">
+                <span style="color: var(--accent-green)">{{ market_breadth.up }}</span>
+                <span style="color: var(--text-secondary); font-size: 18px;"> / </span>
+                <span style="color: var(--accent-red)">{{ market_breadth.down }}</span>
+            </div>
+            <div class="metric-sub">上涨/下跌 ({{ "{:.0%}".format(market_breadth.breadth_ratio) }}多头)</div>
+        </div>
+    </div>
+
+    <!-- VIX/RSI 仪表盘 -->
+    <div class="grid grid-2">
+        <div class="card">
+            <div class="card-title">VIX 恐慌指数仪表盘</div>
+            <div id="vix-gauge" class="chart-container short"></div>
+        </div>
+        <div class="card">
+            <div class="card-title">NASDAQ RSI(14) 仪表盘</div>
+            <div id="rsi-gauge" class="chart-container short"></div>
+        </div>
+    </div>
+
+    <!-- NASDAQ 综合指数 K线图 -->
+    <div class="card" style="margin-bottom: 20px;">
+        <div class="card-section-title">NASDAQ Composite (^IXIC) 技术分析</div>
+        <div id="ixic-candlestick" class="chart-container tall"></div>
+        <div style="margin-top: 10px;">
+            <div class="card-title" style="margin-bottom: 5px;">成交量</div>
+            <div id="ixic-volume" class="chart-container short"></div>
+        </div>
+        <div style="margin-top: 10px;">
+            <div class="card-title" style="margin-bottom: 5px;">MACD</div>
+            <div id="ixic-macd" class="chart-container short"></div>
+        </div>
+    </div>
+
+    <!-- 趋势分析与信号 -->
+    <div class="grid grid-2">
+        <div class="card">
+            <div class="card-section-title">趋势分析</div>
+            <p style="margin-bottom: 12px;">当前趋势:
+                <span class="trend-indicator {{ trend.level }}">{{ trend.direction }}</span>
+            </p>
+            <div class="sr-grid">
+                <div class="sr-item resistance">
+                    <div class="sr-label">阻力位1</div>
+                    <div class="sr-value" style="color: var(--accent-red)">{{ "{:,.2f}".format(support_resistance.resistance1) }}</div>
+                </div>
+                <div class="sr-item resistance">
+                    <div class="sr-label">阻力位2</div>
+                    <div class="sr-value" style="color: var(--accent-red)">{{ "{:,.2f}".format(support_resistance.resistance2) }}</div>
+                </div>
+                <div class="sr-item support">
+                    <div class="sr-label">支撑位1</div>
+                    <div class="sr-value" style="color: var(--accent-green)">{{ "{:,.2f}".format(support_resistance.support1) }}</div>
+                </div>
+                <div class="sr-item support">
+                    <div class="sr-label">支撑位2</div>
+                    <div class="sr-value" style="color: var(--accent-green)">{{ "{:,.2f}".format(support_resistance.support2) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-section-title">关键交易信号</div>
+            {% if signals %}
+            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                {% for signal in signals %}
+                <span class="signal-badge {{ 'bull' if '看多' in signal.level or '超卖' in signal.level else 'bear' if '看空' in signal.level or '超买' in signal.level else 'neutral' }}">
+                    {{ signal.type }} - {{ signal.level }}
+                </span>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="color: var(--text-secondary);">暂无明显交易信号</p>
+            {% endif %}
+            {% if ixic_latest %}
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
+                    <div>开盘: <strong>{{ "{:,.2f}".format(ixic_latest.open) }}</strong></div>
+                    <div>最高: <strong style="color: var(--accent-green)">{{ "{:,.2f}".format(ixic_latest.high) }}</strong></div>
+                    <div>最低: <strong style="color: var(--accent-red)">{{ "{:,.2f}".format(ixic_latest.low) }}</strong></div>
+                    <div>成交量: <strong>{{ "{:,.0f}".format(ixic_latest.volume) }}</strong></div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 重点个股推荐 -->
+    <div class="card" style="margin-bottom: 20px; margin-top: 20px;">
+        <div class="card-section-title">重点个股分析推荐</div>
+        {% for sector_name, stocks in stock_recommendations.items() %}
+        <div class="sector-group">
+            <div class="sector-group-title">{{ sector_name }}</div>
+            <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>代码</th>
+                        <th>名称</th>
+                        <th>现价</th>
+                        <th>涨跌幅</th>
+                        <th>RSI</th>
+                        <th>趋势</th>
+                        <th>信号</th>
+                        <th>建议</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stock in stocks %}
+                    <tr>
+                        <td><strong>{{ stock.ticker }}</strong></td>
+                        <td>{{ stock.name }}</td>
+                        <td>{{ "{:,.2f}".format(stock.price) }}</td>
+                        <td class="{{ 'up' if stock.change_pct > 0 else 'down' if stock.change_pct < 0 else '' }}">
+                            {{ '+' if stock.change_pct > 0 }}{{ "{:.2f}".format(stock.change_pct) }}%
+                        </td>
+                        <td>{{ "{:.1f}".format(stock.rsi) if stock.rsi is not none else 'N/A' }}</td>
+                        <td>{{ stock.trend }}</td>
+                        <td style="font-size: 12px; max-width: 200px;">{{ stock.signals }}</td>
+                        <td>
+                            {% if '买入' in stock.recommendation %}
+                            <span class="stock-recommendation buy">{{ stock.recommendation }}</span>
+                            {% elif '减持' in stock.recommendation %}
+                            <span class="stock-recommendation sell">{{ stock.recommendation }}</span>
+                            {% else %}
+                            <span class="stock-recommendation hold">{{ stock.recommendation }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 动态涨幅榜 -->
+    <div class="card" style="margin-bottom: 20px;">
+        <div class="card-section-title">NASDAQ 当日涨幅榜（动态筛选 Top {{ dynamic_gainers | length }}）</div>
+        {% if dynamic_gainers %}
+        <div id="gainers-chart" class="chart-container"></div>
+        <div style="margin-top: 15px;">
+            {% for gainer in dynamic_gainers %}
+            <div class="gainer-item">
+                <span class="gainer-rank">{{ loop.index }}</span>
+                <div class="gainer-info">
+                    <span class="gainer-ticker">{{ gainer.ticker }}</span>
+                    <span class="gainer-name"> {{ gainer.name }}</span>
+                </div>
+                <div class="gainer-price">
+                    <div>{{ "{:,.2f}".format(gainer.price) }}</div>
+                    <div class="gainer-change" style="color: var(--accent-green)">+{{ "{:.2f}".format(gainer.change_pct) }}%</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--text-secondary); text-align: center; padding: 30px;">暂无涨幅榜数据（可能市场休市或数据获取失败）</p>
+        {% endif %}
+    </div>
+
+    <!-- 免责声明 -->
+    <div class="disclaimer">
+        <strong>免责声明：</strong>本报告由程序自动生成，数据来源于 Yahoo Finance，仅供学习和参考使用，不构成任何投资建议。
+        投资有风险，入市需谨慎。请根据自身风险承受能力做出独立判断，作者不对任何投资损失负责。
+        技术指标基于历史数据计算，不能保证未来走势。请在投资前咨询专业财务顾问。
+    </div>
+</div>
+
+<!-- ECharts 数据注入 -->
+<script>
+const chartData = {{ chart_data | safe }};
+const vixData = {{ vix_data | tojson }};
+
+// 通用配置
+const commonGrid = {
+    left: '5%', right: '3%', top: 50, bottom: 60,
+    containLabel: true
+};
+const commonAxisLabel = { color: '#8b949e' };
+const commonSplitLine = { lineStyle: { color: '#30363d' } };
+
+// K线图
+function initCandlestick(domId, data) {
+    const chart = echarts.init(document.getElementById(domId), 'dark');
+    chart.setOption({
+        backgroundColor: 'transparent',
+        legend: {
+            data: ['K线', 'MA5', 'MA10', 'MA20', 'MA60', '布林上轨', '布林下轨'],
+            top: 5, textStyle: { color: '#8b949e', fontSize: 11 },
+            itemWidth: 15, itemHeight: 8
+        },
+        tooltip: {
+            trigger: 'axis', axisPointer: { type: 'cross' },
+            backgroundColor: '#161b22', borderColor: '#30363d',
+            textStyle: { color: '#e6edf3' }
+        },
+        xAxis: {
+            type: 'category', data: data.dates,
+            boundaryGap: false, axisLabel: commonAxisLabel,
+            axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        yAxis: {
+            scale: true, axisLabel: commonAxisLabel,
+            splitLine: commonSplitLine,
+            axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        dataZoom: [
+            { type: 'inside', start: 50 },
+            { type: 'slider', start: 50, height: 20, bottom: 5 }
+        ],
+        series: [
+            {
+                name: 'K线', type: 'candlestick', data: data.candlestick,
+                itemStyle: {
+                    color: '#3fb950', color0: '#f85149',
+                    borderColor: '#3fb950', borderColor0: '#f85149'
+                }
+            },
+            { name: 'MA5', type: 'line', data: data.ma_lines.MA5,
+              smooth: true, lineStyle: { width: 1, color: '#f0b90b' },
+              symbol: 'none' },
+            { name: 'MA10', type: 'line', data: data.ma_lines.MA10,
+              smooth: true, lineStyle: { width: 1, color: '#e0556b' },
+              symbol: 'none' },
+            { name: 'MA20', type: 'line', data: data.ma_lines.MA20,
+              smooth: true, lineStyle: { width: 1, color: '#4ea8de' },
+              symbol: 'none' },
+            { name: 'MA60', type: 'line', data: data.ma_lines.MA60,
+              smooth: true, lineStyle: { width: 1, color: '#bc8cff' },
+              symbol: 'none' },
+            { name: '布林上轨', type: 'line', data: data.boll_upper,
+              smooth: true, lineStyle: { type: 'dashed', width: 1, color: 'rgba(139,148,158,0.5)' },
+              symbol: 'none' },
+            { name: '布林下轨', type: 'line', data: data.boll_lower,
+              smooth: true, lineStyle: { type: 'dashed', width: 1, color: 'rgba(139,148,158,0.5)' },
+              symbol: 'none' }
+        ]
+    });
+    return chart;
+}
+
+// 成交量图
+function initVolume(domId, data) {
+    const chart = echarts.init(document.getElementById(domId), 'dark');
+    chart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+            trigger: 'axis', axisPointer: { type: 'shadow' },
+            backgroundColor: '#161b22', borderColor: '#30363d',
+            textStyle: { color: '#e6edf3' }
+        },
+        xAxis: {
+            type: 'category', data: data.dates,
+            axisLabel: commonAxisLabel,
+            axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        yAxis: {
+            axisLabel: commonAxisLabel,
+            splitLine: commonSplitLine,
+            axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        dataZoom: [{ type: 'inside', start: 50 }],
+        series: [{
+            type: 'bar', data: data.volume,
+            itemStyle: {
+                color: function(p) { return p.data.isup ? '#3fb950' : '#f85149'; }
+            }
+        }]
+    });
+    return chart;
+}
+
+// MACD 图
+function initMACD(domId, data) {
+    const chart = echarts.init(document.getElementById(domId), 'dark');
+    chart.setOption({
+        backgroundColor: 'transparent',
+        legend: {
+            data: ['DIF', 'DEA', 'MACD'],
+            top: 5, textStyle: { color: '#8b949e', fontSize: 11 },
+            itemWidth: 15, itemHeight: 8
+        },
+        tooltip: {
+            trigger: 'axis', axisPointer: { type: 'cross' },
+            backgroundColor: '#161b22', borderColor: '#30363d',
+            textStyle: { color: '#e6edf3' }
+        },
+        xAxis: {
+            type: 'category', data: data.dates,
+            axisLabel: commonAxisLabel,
+            axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        yAxis: {
+            axisLabel: commonAxisLabel,
+            splitLine: commonSplitLine,
+            axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        dataZoom: [{ type: 'inside', start: 50 }],
+        series: [
+            { name: 'DIF', type: 'line', data: data.macd_dif,
+              smooth: true, lineStyle: { width: 1.5, color: '#58a6ff' },
+              symbol: 'none' },
+            { name: 'DEA', type: 'line', data: data.macd_dea,
+              smooth: true, lineStyle: { width: 1.5, color: '#d29922' },
+              symbol: 'none' },
+            { name: 'MACD', type: 'bar', data: data.macd_hist,
+              itemStyle: {
+                  color: function(p) { return p.value >= 0 ? '#3fb950' : '#f85149'; }
+              }
+            }
+        ]
+    });
+    return chart;
+}
+
+// 仪表盘
+function initGauge(domId, value, name, ranges) {
+    const chart = echarts.init(document.getElementById(domId), 'dark');
+    chart.setOption({
+        backgroundColor: 'transparent',
+        series: [{
+            type: 'gauge', min: 0, max: 100,
+            axisLine: {
+                lineStyle: {
+                    width: 20,
+                    color: ranges
+                }
+            },
+            pointer: { itemStyle: { color: 'auto' } },
+            axisTick: { distance: -20, length: 6, lineStyle: { color: '#30363d' } },
+            splitLine: { distance: -20, length: 15, lineStyle: { color: '#30363d' } },
+            axisLabel: { color: '#8b949e', distance: -15, fontSize: 10 },
+            detail: {
+                valueAnimation: true, formatter: '{value}',
+                color: '#e6edf3', fontSize: 24, offsetCenter: [0, '70%']
+            },
+            title: { color: '#8b949e', fontSize: 12, offsetCenter: [0, '95%'] },
+            data: [{ value: Math.round(value * 10) / 10, name: name }]
+        }]
+    });
+    return chart;
+}
+
+// 涨幅榜横向柱状图
+function initGainersChart(domId, gainers) {
+    const chart = echarts.init(document.getElementById(domId), 'dark');
+    chart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+            trigger: 'axis', axisPointer: { type: 'shadow' },
+            backgroundColor: '#161b22', borderColor: '#30363d',
+            textStyle: { color: '#e6edf3' },
+            formatter: function(params) {
+                const p = params[0];
+                return p.name + '<br/>涨幅: +' + p.value + '%';
+            }
+        },
+        grid: { left: '3%', right: '8%', top: 10, bottom: 10, containLabel: true },
+        xAxis: {
+            type: 'value', axisLabel: commonAxisLabel,
+            splitLine: commonSplitLine,
+            axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        yAxis: {
+            type: 'category',
+            data: gainers.map(g => g.ticker).reverse(),
+            axisLabel: { color: '#e6edf3', fontSize: 12, fontWeight: 'bold' },
+            axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        series: [{
+            type: 'bar',
+            data: gainers.map(g => g.change_pct).reverse(),
+            itemStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                    { offset: 0, color: 'rgba(63,185,80,0.3)' },
+                    { offset: 1, color: '#3fb950' }
+                ]),
+                borderRadius: [0, 4, 4, 0]
+            },
+            label: {
+                show: true, position: 'right',
+                formatter: '+{c}%', color: '#3fb950', fontSize: 12, fontWeight: 'bold'
+            }
+        }]
+    });
+    return chart;
+}
+
+// 渲染所有图表
+const charts = [];
+
+// NASDAQ K线图
+if (chartData.ixic && chartData.ixic.dates && chartData.ixic.dates.length > 0) {
+    charts.push(initCandlestick('ixic-candlestick', chartData.ixic));
+    charts.push(initVolume('ixic-volume', chartData.ixic));
+    charts.push(initMACD('ixic-macd', chartData.ixic));
+} else {
+    document.getElementById('ixic-candlestick').innerHTML = '<div class="loading">NASDAQ 数据暂不可用</div>';
+}
+
+// VIX 仪表盘
+if (vixData && vixData.value) {
+    charts.push(initGauge('vix-gauge', vixData.value, 'VIX', [
+        [0.15, '#3fb950'], [0.20, '#3fb950'],
+        [0.25, '#d29922'], [0.30, '#f85149'], [1, '#f85149']
+    ]));
+} else {
+    document.getElementById('vix-gauge').innerHTML = '<div class="loading">VIX 数据暂不可用</div>';
+}
+
+// RSI 仪表盘
+if (chartData.ixic && chartData.ixic.rsi && chartData.ixic.rsi.length > 0) {
+    const lastRSI = chartData.ixic.rsi[chartData.ixic.rsi.length - 1];
+    if (lastRSI !== null && !isNaN(lastRSI)) {
+        charts.push(initGauge('rsi-gauge', lastRSI, 'RSI(14)', [
+            [0.3, '#f85149'], [0.7, '#3fb950'], [1, '#f85149']
+        ]));
+    } else {
+        document.getElementById('rsi-gauge').innerHTML = '<div class="loading">RSI 数据暂不可用</div>';
+    }
+} else {
+    document.getElementById('rsi-gauge').innerHTML = '<div class="loading">RSI 数据暂不可用</div>';
+}
+
+// 涨幅榜图表
+if (chartData.dynamic_gainers && chartData.dynamic_gainers.length > 0) {
+    charts.push(initGainersChart('gainers-chart', chartData.dynamic_gainers));
+} else {
+    document.getElementById('gainers-chart').style.display = 'none';
+}
+
+// 响应式
+window.addEventListener('resize', function() {
+    charts.forEach(function(c) { if (c) c.resize(); });
+});
+</script>
+</body>
+</html>
