@@ -1,216 +1,223 @@
-# NDXinfo
+# 🏕️ TradeCamp — 新手的股票交易训练营
 
-> 美股自动交易系统 + 纳指每日分析报告生成器
-> 项目组合：一个项目，两个工具，相互联动
+<p align="center">
+  <strong>📖 学 → 🧪 练 → 📊 看 → 🤖 模拟 → 💰 真刀真枪</strong>
+</p>
+
+<p align="center">
+  从零开始学炒股的开源工具箱 —— 内置 8 章教程、AI 教练、模拟交易、每日大盘分析报告
+</p>
+
+<p align="center">
+  <a href="#-快速开始">快速开始</a> ·
+  <a href="#-学习路线">学习路线</a> ·
+  <a href="#-项目导航">项目导航</a> ·
+  <a href="#-贡献">贡献</a> ·
+  <a href="CONTRIBUTING.md">贡献指南</a>
+</p>
 
 ---
 
-## 项目组成
+## 为什么会有 TradeCamp？
 
-| # | 模块 | 功能 | 入口 |
-|---|---|---|---|
-| 🅰️ | **美股自动交易系统** | 真/模拟券商，下单、风控、策略、回测 | `trader.py` · `trading/` · `webapp/` |
-| 🅱️ | **NDX 每日分析报告** | 纳指 (NDX) + 12 只重点股每日技术分析 + 报告 | `nasdaq_analyzer.py` · `reports/*.html` |
+每个新手学炒股都会遇到同样的问题：
 
-**联动**：交易系统 Dashboard 顶部展示今日 NDX 大盘状态（来自 🅱️）——见 `webapp/features/NdxStatusBar.tsx`。
+> "我想学炒股，但不知道从哪里开始。看书太抽象，直接拿真钱练太冒险，看别人操作又看不懂。"
+
+TradeCamp 就是答案。它把学炒股变成了一场**训练营体验**：
+
+- **不用真金白银**——内置模拟券商，滑点、手续费、T+1 全都模拟，零风险练习
+- **不用啃书**——8 章入门课程 + 50+ 术语词典，从 K 线到风控，循序渐进
+- **有 AI 教练**——每天自动分析你的操作，给段位评估和改进建议
+- **能看真实市场**——每天自动生成 NASDAQ 大盘分析报告，用真实数据学技术分析
 
 ---
 
-## 🅰️ 美股自动交易系统（trader）
+## 🗺️ 学习路线
 
-### 包含
+TradeCamp 引导你走过完整的四阶段学习路径：
 
-| 子模块 | 内容 |
-|---|---|
-| `trading/`    | broker / risk / strategy / executor / cache / rate limiter（**生产级**） |
-| `backtest/`   | 回测引擎、组合、12 项指标、HTML 报告 |
-| `gui/`        | PyQt5 桌面 app（Dashboard / Trading / Strategy 三个标签页，深/浅主题） |
-| `examples/`   | 7 个独立 demo 脚本 + 一键 `run_all_demos.bat` |
-| `tests/`      | 29 个单元测试 |
-| `webapp/`     | **React 18 + FastAPI 网页版**（5 个页面、TradingView K 线、实时推送） |
-| `.github/`    | CI: 跑测试 + 算覆盖率 + 主题哈希校验 |
+```
+第 1 阶段         第 2 阶段          第 3 阶段          第 4 阶段
+📖 理论学习      🧪 回测验证       🤖 模拟实盘        💰 真实交易
 
-### 三个启动方式
+ 学 K 线          用历史数据         模拟券商           连接 Alpaca
+ 学指标          验证策略思路       零风险下单          Paper Trading
+ 学课程          看回测报告          AI 教练点评         真·真金白银
+ 背术语          理解胜率回撤       看懂大盘报告        策略上线
+```
+
+| 阶段 | 你在做什么 | 用 TradeCamp 的什么 |
+|------|-----------|-------------------|
+| 📖 理论 | 学习 K 线、MACD、RSI 等基础概念 | Web 版 → 学习 + 术语词典 |
+| 🧪 回测 | 用历史数据验证"如果我按 MACD 金叉买会怎样" | 回测引擎 → 12 项指标报告 |
+| 🤖 模拟 | 用模拟券商零风险练手，AI 教练每天给反馈 | Web 版 → 交易 + AI 教练 |
+| 💰 实盘 | 申请 Alpaca 账号，用虚拟资金练，再上真资金 | 交易引擎 → Alpaca Paper/Real |
+
+---
+
+## 📦 里面有什么
+
+### 🎓 学习系统（Web 浏览器打开即用）
+
+12 个页面，从学到练一站式：
+
+| 页面 | 干什么用 |
+|------|---------|
+| 📖 学习 | 8 章股市入门课程：K 线基础 → 技术指标 → 交易心理 |
+| 📚 术语 | 50+ 专业术语词典，随时查 |
+| 🤖 AI 教练 | 段位评估、每日简报、持仓体检、操作建议 |
+| 📊 Dashboard | 账户总览、净值曲线、持仓一览 |
+| 📈 交易 | K 线图 + 下单面板 |
+| 🧠 交易桌面 | AI 多因子推荐引擎 |
+| 🔬 分析 | NASDAQ 大盘完整技术分析 |
+| ⚙️ 策略 | 8 种交易策略可选 + 风控参数 |
+| 💼 组合 | 持仓管理与分析 |
+| 📝 日志 | 记录每笔交易，复盘成长 |
+| 📡 实时日志 | WebSocket 实时推送 |
+| 🎛️ 设置 | 主题切换 / 券商切换 |
+
+### 📊 每日大盘报告（自动生成）
+
+每天一份专业级 HTML 报告，涵盖：
+- **10 大技术指标**：MA / MACD / RSI / KDJ / BOLL / ATR / OBV / WR / CCI / VWAP
+- **趋势分析**：支撑阻力位、交易信号、投资建议
+- **市场宽度**：涨跌比、市场情绪
+- **VIX 恐慌指数**：市场恐慌程度
+- **板块轮动**：11 大行业 ETF 资金流向
+- **新闻情绪**：中英文金融词典情感分析
+
+### 🧠 AI 教练
+
+不用请老师，AI 教练自动帮你：
+- **段位评估**：根据你的交易记录给你评段（青铜 → 王者）
+- **每日简报**：今天市场发生了什么，对你意味着什么
+- **持仓体检**：你手上股票有没有问题？
+- **风险预警**：仓位太重？止损太远？教练提醒你
+
+### 🏦 模拟券商
+
+内置专业级模拟券商，完整模拟真实交易环境：
+- 滑点、手续费、T+1 结算
+- 市价单 / 限价单
+- 部分成交
+
+---
+
+## 🚀 快速开始
+
+### 第一步：装依赖
 
 ```powershell
-# 1️⃣ 跑 PyQt5 桌面 app（Windows 原生窗口）
-cd e:\Projects\NDXinfo
-python trader.py
+# Python（核心）
+pip install -r requirements.txt
 
-# 2️⃣ 跑 React 网页版（默认 mock，离线演示）
+# Web 版额外需要
+pip install fastapi uvicorn[standard] websockets
+```
+
+### 第二步：打开浏览器，开始学
+
+```powershell
+# Web 版（推荐新手从这里开始）
 .\webapp\scripts\dev.ps1
 # → 浏览器打开 http://127.0.0.1:5173
-
-# 3️⃣ 跑 React 网页版（真引擎 + 模拟券商）
-$env:NDXINFO_BACKEND='real'
-$env:NDXINFO_BROKER='simulation'
-.\webapp\scripts\dev.ps1
-
-# 4️⃣ 跑 Alpaca Paper（需要免费 key）
-$env:APCA_API_KEY_ID='PK...'
-$env:APCA_API_SECRET_KEY='SK...'
-.\webapp\scripts\start_alpaca_paper.ps1
 ```
 
-### 跑所有 demo 验证
+打开后直接点「学习」开始第一章，或点「术语」查你不懂的概念。
+
+### 第三步：生成一份大盘报告看看
 
 ```powershell
-cd e:\Projects\NDXinfo
-.\examples\run_all_demos.bat
-# → 跑完 9 步（broker / sim rules / backtest / config / observability / strategies / theme / capture_gui / dashboard）
-```
-
-### 网页版截图
-
-`webapp/screenshots/` 下：
-
-| 文件 | 内容 |
-|---|---|
-| `dashboard.png`         | 总览（含净值曲线 + 持仓 + NDX 大盘状态） |
-| `dashboard_light.png`   | 浅色主题 |
-| `trading.png`           | 交易（K 线 + 下单面板） |
-| `strategy.png`          | 策略（8 策略 + 权重） |
-| `logs.png`              | 实时日志 |
-| `settings.png`          | 设置 |
-
----
-
-## 🅱️ NDX 每日分析报告（nasdaq_analyzer）
-
-详见 [`nasdaq_analyzer.py`](nasdaq_analyzer.py) — 这个模块是已有的，由 jianjiao jianjiao 写。
-
-```powershell
-pip install -r requirements.txt
 python nasdaq_analyzer.py
-# → 生成 nasdaq_report_YYYY-MM-DD.html，浏览器打开即可看
+# → 自动拉取 NASDAQ 数据 → 分析 → 生成 HTML 报告
+# → 浏览器打开就能看到专业的图表和分析
 ```
 
-| 模块 | 内容 |
-|---|---|
-| `data_fetcher.py`       | 多数据源抽象层（yfinance + akshare） |
-| `indicators.py`         | 10 大技术指标（MA / MACD / RSI / KDJ / BOLL / ATR / OBV / WR / CCI / VWAP） |
-| `analysis.py`           | 趋势 + 支撑阻力 + VIX |
-| `backtest.py`           | MACD+RSI+WR 组合策略回测 |
-| `sentiment.py`          | 中英文金融词典情绪 |
-| `sector.py`             | 11 行业 ETF 板块轮动 |
-| `comparison.py`         | 与上期报告对比 |
-| `report_generator.py`   | Jinja2 + ECharts 暗色报告 |
-| `providers/`            | yfinance / akshare 适配器 |
-| `templates/`            | 报告模板 |
-
----
-
-## 联动说明
-
-交易系统的 Dashboard 顶部渲染 NDX 状态条：
-
-```
-NDX 大盘 [⚠ mock]   ↗ +1.12%   $21,350   MA200 20,710   MA50 21,030   RSI 58.4   [温和偏多]
-NDX 上涨 1.12%，MA200 上方；情绪 温和偏多                [查看今日报告 →]
-```
-
-数据通路：
-
-```
-┌───────────────────────────────┐
-│ 🅱️ nasdaq_analyzer            │
-│   data_fetcher.fetch_index()  │ ── 拉 ^NDX 日 K
-│   indicators.calc_all()       │ ── MA50 / MA200 / RSI
-│   report_generator            │ ── reports/nasdaq_report_*.html
-└───────────────────────────────┘
-            ▲ data path ▲
-            │
-            ▼ HTTP /api/market/ndx
-┌───────────────────────────────┐
-│ 🅰️ webapp                     │
-│   backend/adapters/ndx_adapter│ ── 缓存 5 分钟
-│   server.py GET /api/market/ndx
-│   frontend NdxStatusBar.tsx   │ ── Dashboard 顶部
-└───────────────────────────────┘
-```
-
-> 注意：当前是**轻联动**——交易页面只是显示 NDX 状态，不影响交易。
-> 后续可以加深到：交易策略拿 NDX > 200MA 作为开仓条件。
-
----
-
-## 目录结构
-
-```
-e:\Projects\NDXinfo\
-├── trader.py              🅰️  PyQt5 桌面入口
-├── trading/               🅰️  交易内核
-├── backtest/              🅰️  回测引擎
-├── gui/                   🅰️  PyQt5 GUI 模块
-├── examples/              🅰️  7 demo + run_all
-├── tests/                 🅰️  29 单元测试
-├── webapp/                🅰️  React + FastAPI 网页版
-│
-├── nasdaq_analyzer.py     🅱️  NDX 报告主入口
-├── data_fetcher.py        🅱️  数据拉取
-├── indicators.py          🅱️  技术指标
-├── analysis.py            🅱️  趋势分析
-├── backtest.py            🅱️  报告器内回测（与 trading.backtest 不同）
-├── sentiment.py           🅱️  情绪
-├── sector.py              🅱️  板块
-├── comparison.py          🅱️  历史对比
-├── report_generator.py    🅱️  HTML 报告
-├── ml_predictor.py        🅱️  ML 价格预测（实验）
-├── providers/             🅱️  多数据源抽象层
-├── templates/             🅱️  Jinja2 模板
-├── requirements-report.txt 🅱️ 报告器依赖
-│
-├── config.py              🅱️ 报告器配置（与 🅰️ 的 config/default.yaml 不冲突）
-├── requirements.txt       🅰️ 主依赖（PyQt5 / pandas / yfinance / akshare …）
-├── config/default.yaml    🅰️ 交易配置
-├── Dockerfile             🅱️ 报告器的容器镜像
-├── data/, reports/        🅱️ 报告 + SQLite 历史
-├── nasdaq_report_*.html   🅱️ 今天生成的报告
-└── README.md              本文件
-```
-
----
-
-## 依赖（一次安装搞定全部）
+### 进阶：想试试桌面版？
 
 ```powershell
-pip install -r requirements.txt
-# 然后给交易引擎做（Python web app 用）
-pip install fastapi uvicorn[standard] websockets
-# 然后给 React 前端做（Node 自动装）
-cd webapp/frontend ; npm install
+python trader.py
+# → PyQt5 原生 Windows 窗口，高性能 K 线图
 ```
 
 ---
 
-## 测试
+## 📸 界面预览
+
+| Dashboard | 交易面板 | 学习系统 |
+|:---:|:---:|:---:|
+| 账户 + 持仓 + 净值 | K 线 + 下单 | 8 章课程 |
+
+| 策略配置 | AI 教练 | 大盘分析 |
+|:---:|:---:|:---:|
+| 8 策略 + 权重 | 段位 + 建议 | NDX 技术指标 |
+
+完整截图见 `webapp/screenshots/`。
+
+---
+
+## 📁 项目导航
+
+> 如果你是开发者、想贡献代码，请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)
+
+| 你想做什么 | 去哪里 |
+|-----------|--------|
+| 了解项目架构 | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| 看路线图和未来计划 | [ROADMAP.md](ROADMAP.md) |
+| 理解技术选型原因 | [DECISIONS.md](DECISIONS.md) |
+| 看版本更新记录 | [CHANGELOG.md](CHANGELOG.md) |
+| AI 辅助开发规则 | [AGENTS.md](AGENTS.md) |
+| 报告 Bug | [Issue → Bug Report](https://github.com/orgs/TradeCamp/issues/new?template=bug_report.yml) |
+| 提功能建议 | [Issue → Feature Request](https://github.com/orgs/TradeCamp/issues/new?template=feature_request.yml) |
+| 贡献课程/术语 | [Issue → 教学内容](https://github.com/orgs/TradeCamp/issues/new?template=learning.yml) |
+| 行为准则 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
+| 安全策略 | [SECURITY.md](SECURITY.md) |
+
+---
+
+## 🧪 测试
 
 ```powershell
-cd e:\Projects\NDXinfo
-pytest                 # 29 单元测试
-coverage run -m pytest ; coverage report   # 覆盖率报告
+# 报告系统验证
+python nasdaq_analyzer.py          # 10 步全部成功即为正常
+
+# 交易系统单元测试
+pytest tests/                      # 7 个测试文件全部通过
+
+# 一键跑所有 Demo
+.\examples\run_all_demos.bat
 ```
 
-CI 在 `.github/workflows/smoke.yml` —— push 上去自动跑。
+CI 自动跑在 `.github/workflows/smoke.yml`。
 
 ---
 
-## License
+## 🫶 贡献
 
-MIT
+TradeCamp 的目标是让更多人学会投资。**你不一定要会写代码才能贡献：**
+
+| 你的技能 | 你可以 |
+|---------|--------|
+| 📝 懂中文 | 修正错别字、润色课程文案 |
+| 📖 有交易经验 | 写新的课程章节、补充实战案例 |
+| 🌍 会翻译 | 中英互译课程和术语 |
+| 🎨 会设计 | 改进网页 UI、设计 Logo |
+| 🐍 会 Python | 新增指标、券商适配器、策略 |
+| ⚛️ 会 React | 改进 Web 前端功能和体验 |
+
+详细指南：**[CONTRIBUTING.md](CONTRIBUTING.md)**
 
 ---
 
-## 路线图
+## 📄 许可证
 
-- [x] 模拟券商（slippage / commission / T+1 / 部分成交）
-- [x] 8 个策略（含 KDJ / BOLL-width / Ensemble）
-- [x] 回测 + 12 项指标
-- [x] PyQt5 深/浅主题
-- [x] 单元测试 + GitHub Actions CI
-- [x] React + FastAPI 网页版
-- [x] 真引擎 + Alpaca Paper 适配
-- [x] NDX 报告器 → 交易 Dashboard 轻联动
-- [ ] 中联动：策略以 NDX > MA200 为开仓前置
-- [ ] 重联动：统一数据层（合并为 trading.report）
-- [ ] 部署到 Vercel + Render / 或打包 .exe
+[MIT](LICENSE) © TradeCamp 贡献者
+
+---
+
+## ⭐ 支持项目
+
+如果这个项目对你有帮助，请点个 Star ⭐ 让更多新手看到！
+
+有学习问题？提 Issue 选 `question` 标签，我们帮你。

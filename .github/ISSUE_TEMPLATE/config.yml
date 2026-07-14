@@ -1,0 +1,16 @@
+---
+name: ⚙️ 配置文件
+about: 用于配置 Issue 模板的行为
+---
+
+# Issue 模板配置
+
+blank_issues_enabled: true
+
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/orgs/TradeCamp/discussions （即将开放）
+    about: 学习交流、经验分享和一般讨论
+  - name: 📖 项目文档
+    url: https://github.com/orgs/TradeCamp#readme
+    about: 查看 README 和项目架构文档
