@@ -29,6 +29,7 @@ jobs:
     env:
       PYTHONPATH: ${{ github.workspace }}
       QT_QPA_PLATFORM: offscreen      # Qt 在 CI 上无显示器，强制 offscreen
+      PYTHONIOENCODING: utf-8         # 防止 cp1252 环境打印中文报错
 
     steps:
       - name: Checkout
