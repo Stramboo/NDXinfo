@@ -295,6 +295,17 @@ def get_market_quote(symbol: str) -> dict:
             "ts": int(time.time() * 1000)}
 
 
+@app.get("/api/market/batch")
+def get_market_batch(symbols: str = "") -> dict:
+    """批量获取价格快照（学习沙盒用）"""
+    sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    prices = {}
+    for sym in sym_list:
+        if sym in state.engine.prices:
+            prices[sym] = round(state.engine.prices[sym], 2)
+    return {"prices": prices, "ts": int(time.time() * 1000)}
+
+
 @app.get("/api/market/{symbol}/ohlc")
 def get_ohlc(symbol: str, interval: str = "1m", limit: int = 200) -> list[dict]:
     sym = symbol.upper()
@@ -605,7 +616,152 @@ def mark_learning_progress(req: dict) -> dict:
     chapter_id = req.get("chapter_id", "")
     if not chapter_id:
         raise HTTPException(400, "chapter_id required")
+    state.userstore.update_streak()
     return state.userstore.learning_progress_mark(chapter_id)
+
+
+# ---- 学习任务（Quests）----
+
+@app.get("/api/learning/quests")
+def get_learning_quests(chapter_id: str = None) -> dict:
+    """获取任务列表，附带完成状态"""
+    from webapp.backend.learning_content import QUESTS
+    completed_map = {}
+    for p in state.userstore.quest_list():
+        if p.get("completed"):
+            completed_map[p["quest_id"]] = True
+
+    quests_out = []
+    for q in QUESTS:
+        if chapter_id and q.get("chapter_id") != chapter_id:
+            continue
+        quests_out.append({
+            "id": q["id"],
+            "chapter_id": q.get("chapter_id", ""),
+            "title": q["title"],
+            "type": q.get("type", ""),
+            "xp": q.get("xp", 0),
+            "description": q.get("description", ""),
+            "completed": completed_map.get(q["id"], False),
+        })
+    return {"quests": quests_out}
+
+
+@app.post("/api/learning/quests/check")
+def check_quest(req: dict) -> dict:
+    """检查并标记任务完成"""
+    quest_id = req.get("quest_id", "")
+    if not quest_id:
+        raise HTTPException(400, "quest_id required")
+
+    from webapp.backend.learning_content import QUESTS
+    from webapp.backend.quest_checker import check_quest
+
+    quest = next((q for q in QUESTS if q["id"] == quest_id), None)
+    if not quest:
+        raise HTTPException(404, "quest not found")
+
+    context = req.get("context", {})
+    completed = check_quest(quest, context)
+
+    if completed:
+        if not state.userstore.quest_is_completed(quest_id):
+            state.userstore.quest_mark_completed(quest_id)
+            state.userstore.add_xp(quest.get("xp", 0))
+        return {"completed": True, "xp_awarded": quest.get("xp", 0)}
+
+    return {"completed": False, "xp_awarded": 0}
+
+
+@app.get("/api/learning/progress/dashboard")
+def get_learning_dashboard() -> dict:
+    """学习进度仪表盘数据聚合"""
+    from webapp.backend.learning_content import CHAPTERS, QUESTS
+    progress_list = state.userstore.learning_progress_list()
+    completed_chapters = sum(1 for p in progress_list if p.get("completed"))
+    quest_list = state.userstore.quest_list()
+    completed_quests = sum(1 for q in quest_list if q.get("completed"))
+    stats = state.userstore.get_learning_stats()
+    total_xp = stats.get("total_xp", 0)
+    streak_days = stats.get("streak_days", 0)
+
+    # 学习等级
+    levels = [
+        (0, "学徒"), (100, "见习"), (300, "初级"),
+        (800, "中级"), (2000, "高级"), (5000, "专家"), (10000, "大师"),
+    ]
+    current_level = levels[0][1]
+    next_level_xp = levels[1][0] if len(levels) > 1 else 100
+    for i in range(len(levels) - 1, -1, -1):
+        if total_xp >= levels[i][0]:
+            current_level = levels[i][1]
+            next_level_xp = levels[i + 1][0] if i + 1 < len(levels) else levels[i][0] + 5000
+            break
+
+    # 章节详情
+    chapters_detail = []
+    for i, ch in enumerate(CHAPTERS):
+        completed = any(p.get("chapter_id") == ch["id"] and p.get("completed") for p in progress_list)
+        chapter_quests = [q for q in QUESTS if q.get("chapter_id") == ch["id"]]
+        ch_completed_quests = sum(1 for q in chapter_quests for qp in quest_list if qp.get("quest_id") == q["id"] and qp.get("completed"))
+        chapters_detail.append({
+            "id": ch["id"],
+            "number": i + 1,
+            "title": ch["title"],
+            "category": ch.get("group", ""),
+            "completed": completed,
+            "quests_done": ch_completed_quests,
+            "quests_total": len(chapter_quests),
+        })
+
+    return {
+        "chapters_completed": completed_chapters,
+        "chapters_total": len(CHAPTERS),
+        "quests_completed": completed_quests,
+        "quests_total": len(QUESTS),
+        "total_xp": total_xp,
+        "level": current_level,
+        "next_level_xp": next_level_xp,
+        "streak_days": streak_days,
+        "chapters": chapters_detail,
+    }
+
+
+# ---- 沙盒交易 API ----
+
+@app.get("/api/sandbox/account")
+def get_sandbox_account() -> dict:
+    return state.userstore.sandbox_get()
+
+
+class SandboxOrderReq(BaseModel):
+    symbol: str
+    side: str = Field(..., pattern="^(BUY|SELL)$")
+    quantity: int = Field(..., gt=0)
+    price: float = Field(..., gt=0)
+    order_id: str = ""
+
+
+@app.post("/api/sandbox/order")
+def post_sandbox_order(req: SandboxOrderReq) -> dict:
+    oid = req.order_id or f"sandbox-{int(time.time() * 1000)}-{random.randint(1000, 9999)}"
+    ts = int(time.time() * 1000)
+    if req.side == "BUY":
+        state.userstore.sandbox_buy(req.symbol.upper(), req.quantity, req.price, oid, ts)
+    else:
+        state.userstore.sandbox_sell(req.symbol.upper(), req.quantity, req.price, oid, ts)
+    return {"order_id": oid, "status": "filled", "ts": ts}
+
+
+@app.get("/api/sandbox/orders")
+def get_sandbox_orders(limit: int = 50) -> list[dict]:
+    return state.userstore.sandbox_orders_list(limit)
+
+
+@app.post("/api/sandbox/reset")
+def reset_sandbox() -> dict:
+    state.userstore.sandbox_reset()
+    return {"ok": True}
 
 
 # -- 自选列表 --

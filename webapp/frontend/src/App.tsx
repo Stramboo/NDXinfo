@@ -11,6 +11,7 @@ import { AIAdvisor } from "./routes/AIAdvisor";
 import { Strategy } from "./routes/Strategy";
 import { Learning } from "./routes/Learning";
 import { LearningChapter } from "./routes/LearningChapter";
+import { LearningDashboard } from "./routes/LearningDashboard";
 import { Glossary } from "./routes/Glossary";
 import { Portfolio } from "./routes/Portfolio";
 import { Journal } from "./routes/Journal";
@@ -49,6 +50,7 @@ function AppContent() {
             <Route path="/desk" element={<TradingDesk />} />
             <Route path="/learning" element={<Learning />} />
             <Route path="/learning/:chapterId" element={<LearningChapter />} />
+            <Route path="/learning/dashboard" element={<LearningDashboard />} />
             <Route path="/glossary" element={<Glossary />} />
             <Route path="/analysis" element={<Analysis />} />
             <Route path="/strategy" element={<Strategy />} />

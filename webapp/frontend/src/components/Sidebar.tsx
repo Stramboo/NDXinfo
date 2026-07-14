@@ -21,6 +21,7 @@ const items = [
 
 const learnItems = [
   { to: "/learning",   label: "学习",    icon: GraduationCap },
+  { to: "/learning/dashboard", label: "学习进度", icon: BarChart3 },
   { to: "/glossary",   label: "术语表",  icon: BookOpen },
 ];
 

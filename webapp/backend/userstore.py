@@ -129,6 +129,47 @@ CREATE TABLE IF NOT EXISTS learning_progress (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+-- 任务完成记录
+CREATE TABLE IF NOT EXISTS quest_progress (
+    quest_id TEXT PRIMARY KEY,
+    completed INTEGER NOT NULL DEFAULT 0,
+    completed_at TEXT
+);
+
+-- 学习 XP 积分（单行记录）
+CREATE TABLE IF NOT EXISTS learning_stats (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    total_xp INTEGER NOT NULL DEFAULT 0,
+    streak_days INTEGER NOT NULL DEFAULT 0,
+    last_active_date TEXT,
+    updated_at TEXT NOT NULL
+);
+
+-- 沙盒交易账户
+CREATE TABLE IF NOT EXISTS sandbox_account (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    cash REAL NOT NULL DEFAULT 100000,
+    initial_cash REAL NOT NULL DEFAULT 100000,
+    updated_at TEXT NOT NULL
+);
+
+-- 沙盒持仓
+CREATE TABLE IF NOT EXISTS sandbox_positions (
+    symbol TEXT PRIMARY KEY,
+    quantity REAL NOT NULL,
+    avg_cost REAL NOT NULL
+);
+
+-- 沙盒订单历史
+CREATE TABLE IF NOT EXISTS sandbox_orders (
+    order_id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    price REAL NOT NULL,
+    ts INTEGER NOT NULL
+);
 """
 
 
@@ -588,6 +629,209 @@ class UserStore:
         with self._lock:
             self._get_conn().execute("DELETE FROM learning_progress")
             self._get_conn().commit()
+
+    # ---- 任务进度 ----
+
+    def quest_list(self) -> list[dict]:
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM quest_progress ORDER BY quest_id"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def quest_is_completed(self, quest_id: str) -> bool:
+        with self._lock:
+            row = self._get_conn().execute(
+                "SELECT completed FROM quest_progress WHERE quest_id=?", (quest_id,)
+            ).fetchone()
+        return row is not None and row[0] == 1
+
+    def quest_mark_completed(self, quest_id: str):
+        now = _now()
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                """INSERT OR REPLACE INTO quest_progress (quest_id, completed, completed_at)
+                   VALUES (?, 1, ?)""",
+                (quest_id, now),
+            )
+            conn.commit()
+
+    def quest_progress_reset(self):
+        with self._lock:
+            self._get_conn().execute("DELETE FROM quest_progress")
+            self._get_conn().commit()
+
+    # ---- 学习统计 ----
+
+    def _ensure_learning_stats(self):
+        """确保 learning_stats 有初始化记录"""
+        now = _now()
+        with self._lock:
+            self._get_conn().execute(
+                """INSERT OR IGNORE INTO learning_stats (id, total_xp, streak_days, last_active_date, updated_at)
+                   VALUES (1, 0, 0, NULL, ?)""",
+                (now,),
+            )
+            self._get_conn().commit()
+
+    def get_learning_stats(self) -> dict:
+        self._ensure_learning_stats()
+        with self._lock:
+            row = self._get_conn().execute(
+                "SELECT * FROM learning_stats WHERE id=1"
+            ).fetchone()
+        return dict(row) if row else {"total_xp": 0, "streak_days": 0, "last_active_date": None}
+
+    def add_xp(self, amount: int):
+        self._ensure_learning_stats()
+        now = _now()
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                "UPDATE learning_stats SET total_xp = total_xp + ?, updated_at = ? WHERE id = 1",
+                (amount, now),
+            )
+            conn.commit()
+        return self.get_learning_stats()["total_xp"]
+
+    def update_streak(self) -> int:
+        """更新连续学习天数，返回当前 streak"""
+        from datetime import datetime as dt
+        self._ensure_learning_stats()
+        today = dt.now().strftime("%Y-%m-%d")
+        with self._lock:
+            row = self._get_conn().execute(
+                "SELECT last_active_date, streak_days FROM learning_stats WHERE id=1"
+            ).fetchone()
+            last_date = row[0] if row else None
+            current_streak = row[1] if row else 0
+
+            if last_date == today:
+                return current_streak  # 今天已记录
+
+            from datetime import timedelta
+            yesterday = (dt.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            if last_date == yesterday:
+                current_streak += 1
+            elif last_date != today:
+                current_streak = 1
+
+            now = _now()
+            self._get_conn().execute(
+                "UPDATE learning_stats SET streak_days=?, last_active_date=?, updated_at=? WHERE id=1",
+                (current_streak, today, now),
+            )
+            self._get_conn().commit()
+        return current_streak
+
+    # ---- 沙盒交易 ----
+
+    def _ensure_sandbox_account(self):
+        now = _now()
+        with self._lock:
+            self._get_conn().execute(
+                """INSERT OR IGNORE INTO sandbox_account (id, cash, initial_cash, updated_at)
+                   VALUES (1, 100000, 100000, ?)""",
+                (now,),
+            )
+            self._get_conn().commit()
+
+    def sandbox_get(self) -> dict:
+        self._ensure_sandbox_account()
+        with self._lock:
+            row = self._get_conn().execute(
+                "SELECT * FROM sandbox_account WHERE id=1"
+            ).fetchone()
+            pos_rows = self._get_conn().execute(
+                "SELECT * FROM sandbox_positions"
+            ).fetchall()
+        return {
+            "cash": row[1],
+            "initial_cash": row[2],
+            "positions": [{"symbol": r[0], "quantity": r[1], "avg_cost": r[2]} for r in pos_rows],
+        }
+
+    def sandbox_buy(self, symbol: str, quantity: int, price: float, order_id: str, ts: int):
+        self._ensure_sandbox_account()
+        cost = quantity * price
+        now = _now()
+        with self._lock:
+            conn = self._get_conn()
+            # 扣款
+            conn.execute(
+                "UPDATE sandbox_account SET cash = cash - ?, updated_at = ? WHERE id = 1 AND cash >= ?",
+                (cost, now, cost),
+            )
+            # 更新持仓
+            existing = conn.execute(
+                "SELECT quantity, avg_cost FROM sandbox_positions WHERE symbol=?", (symbol,)
+            ).fetchone()
+            if existing:
+                total_qty = existing[0] + quantity
+                total_cost = existing[0] * existing[1] + cost
+                new_avg = total_cost / total_qty
+                conn.execute(
+                    "UPDATE sandbox_positions SET quantity=?, avg_cost=? WHERE symbol=?",
+                    (total_qty, new_avg, symbol),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO sandbox_positions (symbol, quantity, avg_cost) VALUES (?,?,?)",
+                    (symbol, quantity, price),
+                )
+            # 记录订单
+            conn.execute(
+                "INSERT OR REPLACE INTO sandbox_orders (order_id, symbol, side, quantity, price, ts) VALUES (?,?,?,?,?,?)",
+                (order_id, symbol, "BUY", quantity, price, ts),
+            )
+            conn.commit()
+
+    def sandbox_sell(self, symbol: str, quantity: int, price: float, order_id: str, ts: int):
+        self._ensure_sandbox_account()
+        revenue = quantity * price
+        now = _now()
+        with self._lock:
+            conn = self._get_conn()
+            # 加钱
+            conn.execute(
+                "UPDATE sandbox_account SET cash = cash + ?, updated_at = ? WHERE id = 1",
+                (revenue, now),
+            )
+            # 更新持仓
+            existing = conn.execute(
+                "SELECT quantity FROM sandbox_positions WHERE symbol=?", (symbol,)
+            ).fetchone()
+            if existing:
+                remaining = existing[0] - quantity
+                if remaining <= 0:
+                    conn.execute("DELETE FROM sandbox_positions WHERE symbol=?", (symbol,))
+                else:
+                    conn.execute(
+                        "UPDATE sandbox_positions SET quantity=? WHERE symbol=?",
+                        (remaining, symbol),
+                    )
+            # 记录订单
+            conn.execute(
+                "INSERT OR REPLACE INTO sandbox_orders (order_id, symbol, side, quantity, price, ts) VALUES (?,?,?,?,?,?)",
+                (order_id, symbol, "SELL", quantity, price, ts),
+            )
+            conn.commit()
+
+    def sandbox_orders_list(self, limit: int = 100) -> list[dict]:
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM sandbox_orders ORDER BY ts DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{"order_id": r[0], "symbol": r[1], "side": r[2], "quantity": r[3], "price": r[4], "ts": r[5]} for r in rows]
+
+    def sandbox_reset(self):
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute("DELETE FROM sandbox_positions")
+            conn.execute("DELETE FROM sandbox_orders")
+            conn.execute("DELETE FROM sandbox_account")
+            conn.commit()
 
 
 __all__ = ["UserStore"]

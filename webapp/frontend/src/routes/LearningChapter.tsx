@@ -5,11 +5,12 @@
  * 底部自动检测滚动完成 → 标记进度。
  */
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Check } from "lucide-react";
 import { KLineChart } from "../features/KLineChart";
 import { SandboxTradePanel } from "../features/SandboxTradePanel";
+import { QuestCard, type QuestData } from "../features/QuestCard";
 
 type Section = { heading: string; paragraphs: string[] };
 type Interactive = { type: string; instructions?: string } | null;
@@ -25,6 +26,7 @@ export function LearningChapter() {
   const [chapter, setChapter] = useState<ChapterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [markedDone, setMarkedDone] = useState(false);
+  const [quests, setQuests] = useState<QuestData[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +48,17 @@ export function LearningChapter() {
       });
     return () => { cancelled = true; };
   }, [chapterId]);
+
+  // Fetch quests for this chapter
+  useEffect(() => {
+    if (!chapterId) return;
+    fetch(`/api/learning/quests?chapter_id=${encodeURIComponent(chapterId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.quests) setQuests(d.quests);
+      })
+      .catch(() => {});
+  }, [chapterId, markedDone]);  // re-fetch when markedDone changes
 
   // Scroll-completion detection
   useEffect(() => {
@@ -224,6 +237,22 @@ export function LearningChapter() {
             </div>
           )}
         </div>
+
+        {/* Quest list */}
+        {quests.length > 0 && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs uppercase tracking-[0.15em] text-fg-dim">
+                本章任务 ({quests.filter((q) => q.completed).length}/{quests.length})
+              </h3>
+            </div>
+            <div className="space-y-1.5">
+              {quests.map((q) => (
+                <QuestCard key={q.id} quest={q} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -289,4 +289,61 @@ for ch in CHAPTERS:
     assert "id" in ch and "title" in ch and "sections" in ch
 assert len(GLOSSARY) >= 45, f"Expected >=45 glossary entries, got {len(GLOSSARY)}"
 
-__all__ = ["CHAPTERS", "GLOSSARY"]
+# ============================================================
+# 学习任务（Quests）— 每章 1-3 个可验证任务
+# ============================================================
+
+QUESTS = [
+    # ch01: 认识股票
+    {"id": "q0101", "chapter_id": "ch01", "title": "完成第一笔买入",
+     "type": "trade_buy", "params": {"min_quantity": 1},
+     "xp": 50, "description": "在沙盒中买入至少 1 股任意股票"},
+    {"id": "q0102", "chapter_id": "ch01", "title": "完成第一笔卖出",
+     "type": "trade_sell", "params": {"min_quantity": 1},
+     "xp": 50, "description": "卖出你持有的任意股票"},
+
+    # ch02: 读懂K线
+    {"id": "q0201", "chapter_id": "ch02", "title": "观察K线图",
+     "type": "chart_view", "params": {},
+     "xp": 30, "description": "在学习页面查看并观察K线图的走势"},
+
+    # ch03: 技术指标
+    {"id": "q0301", "chapter_id": "ch03", "title": "识别一个金叉信号",
+     "type": "indicator_view", "params": {},
+     "xp": 30, "description": "在图表上找到 MACD 金叉或均线金叉"},
+
+    # ch04: 买卖执行
+    {"id": "q0401", "chapter_id": "ch04", "title": "完成一笔盈利交易",
+     "type": "trade_profit", "params": {"min_pnl": 1.0},
+     "xp": 100, "description": "买入后以更高价卖出，实现至少 $1 盈利"},
+    {"id": "q0402", "chapter_id": "ch04", "title": "创建交易日志",
+     "type": "journal_create", "params": {},
+     "xp": 30, "description": "为你的交易写一篇复盘日志"},
+
+    # ch05: 组合管理
+    {"id": "q0501", "chapter_id": "ch05", "title": "分散持仓",
+     "type": "portfolio_diversify", "params": {"min_symbols": 3},
+     "xp": 80, "description": "同时持有至少 3 只不同行业的股票"},
+
+    # ch06: 风险控制
+    {"id": "q0601", "chapter_id": "ch06", "title": "控制单票仓位",
+     "type": "position_limit", "params": {"max_pct": 30},
+     "xp": 60, "description": "确保没有单只股票占总资金超过 30%"},
+
+    # ch07: 市场情绪
+    {"id": "q0701", "chapter_id": "ch07", "title": "解读市场情绪",
+     "type": "analysis_view", "params": {},
+     "xp": 20, "description": "打开分析页面查看实时的 NDX 大盘情绪数据"},
+
+    # ch08: 自主探索
+    {"id": "q0801", "chapter_id": "ch08", "title": "累计交易 5 笔",
+     "type": "trade_count", "params": {"min_count": 5},
+     "xp": 100, "description": "在沙盒中累计完成 5 笔交易"},
+    {"id": "q0802", "chapter_id": "ch08", "title": "累计盈利 $500",
+     "type": "total_profit", "params": {"min_total_pnl": 500},
+     "xp": 150, "description": "沙盒账户累计盈利超过 $500"},
+]
+
+assert len(QUESTS) == 13, f"Expected 13 quests, got {len(QUESTS)}"
+
+__all__ = ["CHAPTERS", "GLOSSARY", "QUESTS"]

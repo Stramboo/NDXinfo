@@ -5,8 +5,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { BookOpen, ChevronRight, GraduationCap } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import { BookOpen, ChevronRight, GraduationCap, TrendingUp } from "lucide-react";
 
 type ChapterSummary = {
   id: string;
@@ -20,6 +20,7 @@ type ChapterSummary = {
 export function Learning() {
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<{ total_xp: number; level: string; chapters_completed: number; quests_completed: number; quests_total: number } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,6 +35,14 @@ export function Learning() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
+  }, []);
+
+  // Fetch learning stats
+  useEffect(() => {
+    fetch("/api/learning/progress/dashboard")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setStats(d); })
+      .catch(() => {});
   }, []);
 
   const CATEGORY_LABELS: Record<string, string> = {
@@ -66,6 +75,38 @@ export function Learning() {
           从零开始，逐步掌握股票交易的核心知识与操作技能。
         </p>
       </div>
+
+      {/* Stats banner */}
+      {stats && (
+        <Link
+          to="/learning/dashboard"
+          className="panel-card p-4 flex items-center gap-6 hover:bg-bg-hover transition-colors group"
+        >
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-fg-dim" />
+            <span className="text-sm text-fg font-medium">学习进度</span>
+          </div>
+          <div className="flex items-center gap-5 ml-auto">
+            <div className="text-center">
+              <p className="text-xs text-fg-dim">等级</p>
+              <p className="text-sm font-bold text-emerald-400">{stats.level}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-fg-dim">经验</p>
+              <p className="text-sm font-bold text-fg tabular">{stats.total_xp} XP</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-fg-dim">章节</p>
+              <p className="text-sm font-bold text-fg tabular">{stats.chapters_completed}/8</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-fg-dim">任务</p>
+              <p className="text-sm font-bold text-fg tabular">{stats.quests_completed}/{stats.quests_total}</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-fg-dim opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          </div>
+        </Link>
+      )}
 
       {loading && (
         <div className="text-center py-16 text-fg-muted text-sm">加载中...</div>
