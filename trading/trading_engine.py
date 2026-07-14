@@ -110,6 +110,12 @@ class TradingEngine:
         # 注入日志回调到各模块
         self._setup_logging()
 
+    def switch_strategy(self, strategy_name: str):
+        """运行时切换策略"""
+        new_strategy = create_strategy(strategy_name)
+        self.strategy = new_strategy
+        logger.info(f"策略已切换为: {strategy_name}")
+
     def _setup_logging(self):
         """设置日志回调"""
         class CallbackHandler(logging.Handler):

@@ -1,18 +1,27 @@
 import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard, TrendingUp, Brain, Terminal, Settings as Cog, Activity,
-  BarChart3,
+  BarChart3, Briefcase, BookOpen, Zap, Sparkles, GraduationCap,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useTradeStore } from "../store/tradeStore";
 
 const items = [
-  { to: "/",          label: "总览",    icon: LayoutDashboard },
-  { to: "/trading",   label: "交易",    icon: TrendingUp },
-  { to: "/analysis",  label: "分析",    icon: BarChart3 },
-  { to: "/strategy",  label: "策略",    icon: Brain },
-  { to: "/logs",      label: "日志",    icon: Terminal },
-  { to: "/settings",  label: "设置",    icon: Cog },
+  { to: "/",           label: "总览",    icon: LayoutDashboard },
+  { to: "/advisor",    label: "AI推荐",  icon: Sparkles },
+  { to: "/trading",    label: "交易",    icon: TrendingUp },
+  { to: "/desk",       label: "操盘",    icon: Zap },
+  { to: "/analysis",   label: "分析",    icon: BarChart3 },
+  { to: "/portfolio",  label: "组合",    icon: Briefcase },
+  { to: "/strategy",   label: "策略",    icon: Brain },
+  { to: "/journal",    label: "日记",    icon: BookOpen },
+  { to: "/logs",       label: "日志",    icon: Terminal },
+  { to: "/settings",   label: "设置",    icon: Cog },
+];
+
+const learnItems = [
+  { to: "/learning",   label: "学习",    icon: GraduationCap },
+  { to: "/glossary",   label: "术语表",  icon: BookOpen },
 ];
 
 export function Sidebar() {
@@ -50,6 +59,30 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* 学习路径 */}
+      <div className="px-3 pb-2">
+        <div className="border-t border-line pt-2 space-y-1">
+          {learnItems.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition",
+                  "hover:bg-bg-hover",
+                  isActive
+                    ? "bg-bg-hover text-fg"
+                    : "text-fg-muted"
+                )
+              }
+            >
+              <Icon className="h-4 w-4" />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+        </div>
+      </div>
 
       <div className="px-5 py-4 border-t border-line">
         <div className="text-[11px] uppercase tracking-wider text-fg-muted">

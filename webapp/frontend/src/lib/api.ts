@@ -155,6 +155,133 @@ export const api = {
                      method: "POST",
                      body: JSON.stringify(req),
                    }),
+
+  // ---- 用户个性化 API ----
+
+  // 自选列表
+  watchlists:    ()                              => http<Watchlist[]>(`/api/watchlists`),
+  createWatchlist: (req: {name:string; symbols:string[]}) =>
+                   http<Watchlist>(`/api/watchlists`, { method: "POST", body: JSON.stringify(req) }),
+  updateWatchlist: (id: number, req: {name:string; symbols:string[]}) =>
+                   http<Watchlist>(`/api/watchlists/${id}`, { method: "PUT", body: JSON.stringify(req) }),
+  deleteWatchlist: (id: number) =>
+                   http<{deleted:boolean}>(`/api/watchlists/${id}`, { method: "DELETE" }),
+
+  // 价格告警
+  alerts:        ()                              => http<PriceAlert[]>(`/api/alerts`),
+  createAlert:   (req: {symbol:string; condition:string; target_value:number; note?:string}) =>
+                   http<PriceAlert>(`/api/alerts`, { method: "POST", body: JSON.stringify(req) }),
+  deleteAlert:   (id: number) =>
+                   http<{deleted:boolean}>(`/api/alerts/${id}`, { method: "DELETE" }),
+  ackAlert:      (id: number) =>
+                   http<{acknowledged:boolean}>(`/api/alerts/${id}/ack`, { method: "POST" }),
+
+  // 自动操盘
+  tradeStatus:   ()                              => http<TradeStatus>(`/api/trade/status`),
+  tradeControl:  (action: string, interval = 60) =>
+                   http<{action:string; status:string}>(`/api/trade/control`, {
+                     method: "POST", body: JSON.stringify({ action, interval }),
+                   }),
+
+  // 持仓组合（投资组合管理）
+  portfolio:     ()                              => http<PortfolioHolding[]>(`/api/portfolio`),
+  createHolding: (req: {symbol:string; name:string; quantity:number; avg_cost:number; notes?:string}) =>
+                   http<PortfolioHolding>(`/api/portfolio`, { method: "POST", body: JSON.stringify(req) }),
+  updateHolding: (id: number, req: {symbol?:string; name?:string; quantity?:number; avg_cost?:number; notes?:string}) =>
+                   http<PortfolioHolding>(`/api/portfolio/${id}`, { method: "PUT", body: JSON.stringify(req) }),
+  deleteHolding: (id: number) =>
+                   http<{deleted:boolean}>(`/api/portfolio/${id}`, { method: "DELETE" }),
+  portfolioSnapshots: ()                              => http<PortfolioSnapshot[]>(`/api/portfolio/snapshots`),
+  createPortfolioSnapshot: (req: { total_value: number }) =>
+                   http<PortfolioSnapshot>(`/api/portfolio/snapshots`, { method: "POST", body: JSON.stringify(req) }),
+
+  // 交易日志（交易日记）
+  journal:       ()                              => http<JournalEntry[]>(`/api/journal`),
+  createJournalEntry: (req: {symbol:string; direction:string; entry_date:string; exit_date?:string; entry_price:number; exit_price?:number; quantity:number; pnl?:number; rating?:number; tags?:string[]; notes?:string}) =>
+                   http<JournalEntry>(`/api/journal`, { method: "POST", body: JSON.stringify(req) }),
+  updateJournalEntry: (id: number, req: Partial<JournalEntry>) =>
+                   http<JournalEntry>(`/api/journal/${id}`, { method: "PUT", body: JSON.stringify(req) }),
+  deleteJournalEntry: (id: number) =>
+                   http<{deleted:boolean}>(`/api/journal/${id}`, { method: "DELETE" }),
+  journalStats:  ()                              => http<JournalStats>(`/api/journal/stats`),
+
+  // 策略参数
+  strategyParams: (name: string) =>
+                   http<Record<string, number | string | boolean>>(`/api/strategy/${name}/params`),
+  updateStrategyParams: (name: string, params: Record<string, number | string | boolean>) =>
+                   http<Record<string, number | string | boolean>>(`/api/strategy/${name}/params`, { method: "PUT", body: JSON.stringify(params) }),
+};
+
+// ---- 用户个性化类型 ----
+
+export type Watchlist = {
+  id: number;
+  name: string;
+  symbols: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type TradeStatus = {
+  running: boolean; mode: string; strategy: string;
+  tick_count: number; success: number; errors: number; interval_s: number;
+  account?: Account; positions_count?: number; last_error?: string; error?: string;
+};
+
+export type PriceAlert = {
+  id: number;
+  symbol: string;
+  condition: "above" | "below" | "pct_change";
+  target_value: number;
+  enabled: number;
+  triggered: number;
+  triggered_at: string | null;
+  created_at: string;
+  note: string;
+};
+
+export type PortfolioHolding = {
+  id: number;
+  symbol: string;
+  name: string;
+  quantity: number;
+  avg_cost: number;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PortfolioSnapshot = {
+  id: number;
+  total_value: number;
+  recorded_at: string;
+};
+
+export type JournalEntry = {
+  id: number;
+  symbol: string;
+  direction: string;
+  entry_date: string;
+  exit_date: string | null;
+  entry_price: number;
+  exit_price: number | null;
+  quantity: number;
+  pnl: number | null;
+  rating: number | null;
+  tags: string[];
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JournalStats = {
+  total_trades: number;
+  win_rate: number;
+  avg_pnl: number;
+  avg_rating: number;
+  total_pnl: number;
+  profitable_count: number;
+  unprofitable_count: number;
 };
 
 export { ApiError };

@@ -33,6 +33,7 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # 让 webapp.* imports 在无 setup.py 时也能找到
@@ -46,6 +47,10 @@ from webapp.backend.adapters.event_bus import (  # noqa: E402
     EventBus, tick_event, order_event, equity_event, signal_event, log_event,
 )
 from webapp.backend.adapters.ndx_adapter import NdxAdapter  # noqa: E402
+from webapp.backend.userstore import UserStore  # noqa: E402
+from webapp.backend.coach import generate_briefing, get_ranking  # noqa: E402
+from webapp.backend.ai_advisor import generate_daily_recommendations_from_engine, recommendations_to_dict  # noqa: E402
+from webapp.backend.learning_content import CHAPTERS  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
@@ -62,7 +67,9 @@ class AppState:
     # 'mock' 时是 MockEngine；'real' 时是 EngineAdapter（同样实现 account/positions/...）
     engine: Any = None
     # NDX 联动（轻量分析）
-    ndx: NdxAdapter = None  # type: ignore[assignment] 
+    ndx: NdxAdapter = None  # type: ignore[assignment]
+    # 用户数据（自选/告警/组合/日志）
+    userstore: UserStore = None  # type: ignore[assignment] 
 
 state = AppState()
 
@@ -103,6 +110,8 @@ async def lifespan(app: FastAPI):
     state.bus.bind_loop(asyncio.get_running_loop())
     _init_engine(state.bus)
     state.ndx = NdxAdapter(cache_ttl_seconds=300)
+    state.userstore = UserStore()
+    state.userstore.seed_glossary()   # 幂等填充术语表
 
     # 每 1 秒推进一次 tick（mock 模式才自驱；real 模式让 TradingEngine 自己 _auto_tick）
     async def ticker():
@@ -135,8 +144,42 @@ async def lifespan(app: FastAPI):
                         lvl, m, ctx = random.choice(msgs)
                         await state.bus.publish(log_event(lvl, m, **ctx))
                 else:
-                    # real 模式：什么都不做；engine 自己的 _auto_tick / 回调会推数据
-                    # 仍然每 5 秒发一条 ws heartbeat 方便前端显示 "已连接"
+                    # real 模式：推送实盘状态、告警检查
+                    try:
+                        # 推账户和净值
+                        snap = state.engine.snapshot_equity() if hasattr(state.engine, "snapshot_equity") else state.engine.account()
+                        await state.bus.publish(equity_event(snap))
+                        # 推 tick
+                        for sym in getattr(state.engine, "prices", {}):
+                            await state.bus.publish(tick_event(sym, state.engine.prices[sym]))
+                    except Exception:
+                        pass
+                    # 告警检查：每 5 秒检查一次
+                    if int(time.time()) % 5 == 0:
+                        try:
+                            active = state.userstore.alert_get_active()
+                            for al in active:
+                                price = state.engine.prices.get(al["symbol"])
+                                if price is None:
+                                    continue
+                                triggered = False
+                                if al["condition"] == "above" and price >= al["target_value"]:
+                                    triggered = True
+                                elif al["condition"] == "below" and price <= al["target_value"]:
+                                    triggered = True
+                                if triggered:
+                                    state.userstore.alert_mark_triggered(al["id"])
+                                    await state.bus.publish({
+                                        "type": "price_alert",
+                                        "data": {
+                                            "symbol": al["symbol"], "condition": al["condition"],
+                                            "target": al["target_value"], "current_price": price,
+                                            "ts": int(time.time() * 1000),
+                                        }
+                                    })
+                        except Exception:
+                            pass
+                    # heartbeat
                     await state.bus.publish(log_event(
                         "INFO", "ws heartbeat",
                         clients=len(state.bus._subscribers),
@@ -160,6 +203,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="trader WebApp backend", version="0.1.0", lifespan=lifespan)
+
+# 静态文件：让前端能通过 /reports/ 访问分析报告
+_reports_dir = os.path.join(_ROOT, "reports")
+if os.path.isdir(_reports_dir):
+    app.mount("/reports", StaticFiles(directory=_reports_dir), name="reports")
 
 app.add_middleware(
     CORSMiddleware,
@@ -304,7 +352,14 @@ class StrategyReq(BaseModel):
 
 @app.put("/api/strategy")
 def put_strategy(req: StrategyReq) -> dict:
-    # Mock：不实际切换，只回显
+    # real 模式：实际切换策略
+    if state.backend_kind == "real":
+        try:
+            state.engine._engine.switch_strategy(req.name)
+            return {"name": req.name, "applied": True}
+        except Exception as e:
+            logger.warning("Strategy switch failed: %s", e)
+            return {"name": req.name, "applied": False, "error": str(e)}
     return {"name": req.name, "applied": True}
 
 
@@ -339,33 +394,419 @@ def get_equity_history(limit: int = 300) -> list[dict]:
     return state.engine.equity_history[-limit:]
 
 
+# ---------- 自动操盘 API ----------
+
+@app.get("/api/trade/status")
+def get_trade_status() -> dict:
+    """获取自动交易运行状态"""
+    if state.backend_kind == "mock":
+        return {"running": False, "mode": "mock", "strategy": "", "tick_count": 0,
+                "success": 0, "errors": 0, "interval_s": 0}
+    try:
+        eng = state.engine._engine
+        st = eng.get_status()
+        hb = st.get("heartbeat", {})
+        return {
+            "running": eng.is_auto_running,
+            "mode": "real",
+            "strategy": st.get("strategy_name", ""),
+            "tick_count": hb.get("tick_count", 0),
+            "success": hb.get("success_count", 0),
+            "errors": hb.get("error_count", 0),
+            "interval_s": getattr(eng, "_auto_interval", 60),
+            "account": state.engine.account(),
+            "positions_count": len(state.engine.positions_list()),
+            "last_error": st.get("last_error", ""),
+        }
+    except Exception as e:
+        return {"running": False, "mode": "real", "error": str(e)}
+
+
+class AutoTradeReq(BaseModel):
+    action: str = Field(..., pattern="^(start|stop)$")
+    interval: int = Field(default=60, ge=10, le=600)
+
+
+@app.post("/api/trade/control")
+async def control_auto_trade(req: AutoTradeReq) -> dict:
+    """启动/停止自动交易"""
+    if state.backend_kind == "mock":
+        raise HTTPException(400, "mock 模式不支持自动交易，请切换到 real 模式")
+
+    eng = state.engine._engine
+    try:
+        if req.action == "start":
+            if eng.is_auto_running:
+                return {"action": "start", "status": "already_running"}
+            # 先加载历史数据 + 刷新价格（异步包装，避免阻塞 event loop）
+            import concurrent.futures
+            loop = asyncio.get_running_loop()
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                await loop.run_in_executor(pool, eng._load_all_history)
+                await loop.run_in_executor(pool, eng.market_data.refresh_prices)
+            eng.start_auto(interval_seconds=req.interval)
+            await state.bus.publish({
+                "type": "auto_trade", "data": {
+                    "action": "started", "strategy": eng.strategy.name,
+                    "interval_s": req.interval, "ts": int(time.time() * 1000),
+                }
+            })
+            return {"action": "start", "status": "started", "interval_s": req.interval}
+        else:
+            if not eng.is_auto_running:
+                return {"action": "stop", "status": "already_stopped"}
+            eng.stop_auto()
+            await state.bus.publish({
+                "type": "auto_trade", "data": {
+                    "action": "stopped", "ts": int(time.time() * 1000),
+                }
+            })
+            return {"action": "stop", "status": "stopped"}
+    except Exception as e:
+        logger.exception("auto trade control error: %s", e)
+        raise HTTPException(500, str(e))
+
+
 # ---------- WebSocket ----------
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     logger.info("WS client connected: %s", ws.client)
+    recv_task = None
     try:
         # 客户端消息（PING、订阅）— 当前版本先回应 PONG
         async def recv_loop():
             async for msg in ws.iter_text():
                 if msg.strip() == "PING":
-                    await ws.send_text(json.dumps({"type": "pong",
-                                                   "ts": int(time.time()*1000)}))
+                    try:
+                        await ws.send_text(json.dumps({"type": "pong",
+                                                       "ts": int(time.time()*1000)}))
+                    except Exception:
+                        break
 
         recv_task = asyncio.create_task(recv_loop())
 
         async for ev in state.bus.subscribe():
-            await ws.send_text(json.dumps(ev, ensure_ascii=False))
+            try:
+                await ws.send_text(json.dumps(ev, ensure_ascii=False))
+            except Exception:
+                break  # 客户端断开，停发
     except WebSocketDisconnect:
         logger.info("WS client disconnected")
     except Exception as e:
-        logger.exception("WS error: %s", e)
+        logger.warning("WS error: %s", e)
     finally:
-        try:
+        if recv_task is not None:
             recv_task.cancel()
-        except Exception:
-            pass
+            try:
+                await recv_task
+            except asyncio.CancelledError:
+                pass
+
+
+# ---------- 用户个性化 API ----------
+
+# -- AI 交易教练 --
+
+@app.get("/api/coach/briefing")
+def get_coach_briefing() -> dict:
+    """生成个性化盘前简报"""
+    ndx = state.ndx.get_status()
+    briefing = generate_briefing(
+        account=state.engine.account(),
+        positions=state.engine.positions_list(),
+        ndx_status={
+            "change_pct": ndx.change_pct,
+            "sentiment": ndx.sentiment,
+            "sentiment_label": ndx.sentiment_label,
+            "summary": ndx.summary,
+        },
+        orders=state.engine.orders_list(limit=100),
+        signals=state.engine.signal_log(limit=50) if hasattr(state.engine, "signal_log") else [],
+        alerts=state.userstore.alert_list(),
+        journal=state.userstore.journal_list(limit=100),
+    )
+    return {
+        "headline": briefing.headline,
+        "positions": briefing.positions,
+        "warnings": briefing.warnings,
+        "opportunities": briefing.opportunities,
+        "ranking": briefing.ranking,
+        "tone": briefing.tone,
+        "generated_at": briefing.generated_at,
+    }
+
+
+@app.get("/api/coach/ranking")
+def get_coach_ranking() -> dict:
+    """获取段位评估"""
+    return get_ranking(
+        orders=state.engine.orders_list(limit=500),
+        journal=state.userstore.journal_list(limit=500),
+    )
+
+
+# -- AI 每日推荐 --
+
+@app.get("/api/advisor/recommendations")
+async def get_advisor_recommendations() -> dict:
+    """生成 AI 推荐（复用引擎已缓存的历史数据，避免重复拉 yfinance）"""
+    import concurrent.futures
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        dr = await loop.run_in_executor(pool, generate_daily_recommendations_from_engine, state.engine)
+    return recommendations_to_dict(dr)
+
+
+# -- 自选列表 --
+
+@app.get("/api/glossary")
+def get_glossary(category: str = None) -> list[dict]:
+    return state.userstore.glossary_list(category or None)
+
+
+@app.get("/api/glossary/search")
+def search_glossary(q: str) -> list[dict]:
+    if not q or len(q) < 2:
+        return []
+    return state.userstore.glossary_search(q)
+
+
+@app.get("/api/learning/chapters")
+def get_learning_chapters() -> dict:
+    """获取章节列表，附带学习进度"""
+    progress = {}
+    for p in state.userstore.learning_progress_list():
+        progress[p["chapter_id"]] = p["completed"]
+    chapters_out = []
+    for i, ch in enumerate(CHAPTERS):
+        ch_copy = {
+            "id": ch["id"],
+            "number": i + 1,
+            "title": ch["title"],
+            "summary": ch["summary"],
+            "category": ch.get("group", ""),
+            "sections": [{"heading": s["title"], "paragraphs": s["body"]} for s in ch["sections"]],
+            "interactive": ch.get("interactive"),
+            "completed": bool(progress.get(ch["id"], False)),
+        }
+        chapters_out.append(ch_copy)
+    return {"chapters": chapters_out}
+
+
+@app.get("/api/learning/progress")
+def get_learning_progress() -> list[dict]:
+    return state.userstore.learning_progress_list()
+
+
+@app.put("/api/learning/progress")
+def mark_learning_progress(req: dict) -> dict:
+    chapter_id = req.get("chapter_id", "")
+    if not chapter_id:
+        raise HTTPException(400, "chapter_id required")
+    return state.userstore.learning_progress_mark(chapter_id)
+
+
+# -- 自选列表 --
+
+@app.get("/api/watchlists")
+def get_watchlists() -> list[dict]:
+    return state.userstore.watchlist_list()
+
+
+class WatchlistCreateReq(BaseModel):
+    name: str
+    symbols: list[str] = []
+
+
+@app.post("/api/watchlists")
+def create_watchlist(req: WatchlistCreateReq) -> dict:
+    return state.userstore.watchlist_create(req.name, req.symbols)
+
+
+@app.put("/api/watchlists/{list_id}")
+def update_watchlist(list_id: int, req: WatchlistCreateReq) -> dict:
+    result = state.userstore.watchlist_update(list_id, req.name, req.symbols)
+    if result is None:
+        raise HTTPException(404, "watchlist not found")
+    return result
+
+
+@app.delete("/api/watchlists/{list_id}")
+def delete_watchlist(list_id: int) -> dict:
+    ok = state.userstore.watchlist_delete(list_id)
+    if not ok:
+        raise HTTPException(404, "watchlist not found")
+    return {"deleted": True}
+
+
+# -- 价格告警 --
+
+@app.get("/api/alerts")
+def get_alerts() -> list[dict]:
+    return state.userstore.alert_list()
+
+
+class AlertCreateReq(BaseModel):
+    symbol: str
+    condition: str = Field(..., pattern="^(above|below|pct_change)$")
+    target_value: float
+    note: str = ""
+
+
+@app.post("/api/alerts")
+async def create_alert(req: AlertCreateReq) -> dict:
+    return state.userstore.alert_create(req.symbol, req.condition, req.target_value, req.note)
+
+
+@app.put("/api/alerts/{alert_id}")
+def update_alert(alert_id: int, req: AlertCreateReq) -> dict:
+    result = state.userstore.alert_update(alert_id, symbol=req.symbol,
+                                          condition=req.condition,
+                                          target_value=req.target_value,
+                                          note=req.note)
+    if result is None:
+        raise HTTPException(404, "alert not found")
+    return result
+
+
+@app.delete("/api/alerts/{alert_id}")
+def delete_alert(alert_id: int) -> dict:
+    ok = state.userstore.alert_delete(alert_id)
+    if not ok:
+        raise HTTPException(404, "alert not found")
+    return {"deleted": True}
+
+
+@app.post("/api/alerts/{alert_id}/ack")
+def ack_alert(alert_id: int) -> dict:
+    ok = state.userstore.alert_ack(alert_id)
+    if not ok:
+        raise HTTPException(404, "alert not found")
+    return {"acknowledged": True}
+
+
+# -- 投资组合 --
+
+@app.get("/api/portfolio")
+def get_portfolio() -> list[dict]:
+    return state.userstore.portfolio_holdings()
+
+
+class PortfolioAddReq(BaseModel):
+    symbol: str
+    name: str = ""
+    quantity: float = Field(..., gt=0)
+    avg_cost: float = Field(..., gt=0)
+    entry_date: str = ""
+    notes: str = ""
+
+
+@app.post("/api/portfolio")
+def add_portfolio_holding(req: PortfolioAddReq) -> dict:
+    return state.userstore.portfolio_add_holding(
+        req.symbol, req.name, req.quantity, req.avg_cost,
+        req.entry_date or None, req.notes)
+
+
+@app.put("/api/portfolio/{holding_id}")
+def update_portfolio_holding(holding_id: int, req: PortfolioAddReq) -> dict:
+    result = state.userstore.portfolio_update_holding(
+        holding_id, symbol=req.symbol, name=req.name,
+        quantity=req.quantity, avg_cost=req.avg_cost, notes=req.notes)
+    if result is None:
+        raise HTTPException(404, "holding not found")
+    return result
+
+
+@app.delete("/api/portfolio/{holding_id}")
+def delete_portfolio_holding(holding_id: int) -> dict:
+    ok = state.userstore.portfolio_delete_holding(holding_id)
+    if not ok:
+        raise HTTPException(404, "holding not found")
+    return {"deleted": True}
+
+
+@app.get("/api/portfolio/snapshots")
+def get_portfolio_snapshots(limit: int = 90) -> list[dict]:
+    return state.userstore.portfolio_snapshots(limit)
+
+
+class SnapshotReq(BaseModel):
+    total_value: float
+    cash: float = 0
+    holdings_json: str = "[]"
+
+
+@app.post("/api/portfolio/snapshots")
+def add_portfolio_snapshot(req: SnapshotReq) -> dict:
+    return state.userstore.portfolio_add_snapshot(
+        req.total_value, req.cash, req.holdings_json)
+
+
+# -- 交易日志 --
+
+@app.get("/api/journal")
+def get_journal(symbol: str = None, limit: int = 50) -> list[dict]:
+    return state.userstore.journal_list(symbol=symbol, limit=limit)
+
+
+class JournalCreateReq(BaseModel):
+    symbol: str = ""
+    direction: str = ""
+    entry_date: str = ""
+    exit_date: str = ""
+    entry_price: float = 0
+    exit_price: float = 0
+    quantity: float = 0
+    pnl: float = 0
+    pnl_pct: float = 0
+    tags: list[str] = []
+    notes: str = ""
+    rating: int = 0
+
+
+@app.post("/api/journal")
+def create_journal(req: JournalCreateReq) -> dict:
+    return state.userstore.journal_create(**req.model_dump())
+
+
+@app.put("/api/journal/{journal_id}")
+def update_journal(journal_id: int, req: JournalCreateReq) -> dict:
+    result = state.userstore.journal_update(journal_id, **req.model_dump(exclude_none=True))
+    if result is None:
+        raise HTTPException(404, "journal entry not found")
+    return result
+
+
+@app.delete("/api/journal/{journal_id}")
+def delete_journal(journal_id: int) -> dict:
+    ok = state.userstore.journal_delete(journal_id)
+    if not ok:
+        raise HTTPException(404, "journal entry not found")
+    return {"deleted": True}
+
+
+@app.get("/api/journal/stats")
+def get_journal_stats() -> dict:
+    return state.userstore.journal_stats()
+
+
+# -- 策略参数 --
+
+@app.get("/api/strategy/{name}/params")
+def get_strategy_params(name: str) -> dict:
+    return state.userstore.strategy_params_get(name)
+
+
+class StrategyParamsReq(BaseModel):
+    params: dict
+
+
+@app.put("/api/strategy/{name}/params")
+def set_strategy_params(name: str, req: StrategyParamsReq) -> dict:
+    return state.userstore.strategy_params_set(name, req.params)
 
 
 # ---------- 直跑入口 ----------

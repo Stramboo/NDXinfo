@@ -158,9 +158,24 @@ class EngineAdapter:
     # 让 mock / real 接口完全对齐
     @property
     def equity_history(self) -> list[dict]:
-        # real 引擎暂时没有本地缓存 equity（实盘接 broker 后会拉真实 PnL）
-        # 前端会自己用 equity_update 增量构建
-        return []
+        return getattr(self, "_eq_history", [])
+
+    def snapshot_equity(self) -> dict:
+        """生成并返回净值快照（兼容 MockEngine 接口）"""
+        acc = self.account()
+        pt = {
+            "ts": int(time.time() * 1000),
+            "equity": acc["equity"],
+            "cash": acc["cash"],
+            "market_value": acc["market_value"],
+            "daily_pnl": acc["daily_pnl"],
+        }
+        if not hasattr(self, "_eq_history"):
+            self._eq_history = []
+        self._eq_history.append(pt)
+        if len(self._eq_history) > 600:
+            self._eq_history = self._eq_history[-600:]
+        return pt
 
     # ---------- 下单 ----------
 

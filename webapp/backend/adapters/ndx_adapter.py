@@ -328,7 +328,7 @@ class NdxAdapter:
 
         try:
             fetcher = DataFetcher()
-            df = fetcher.fetch_index_history({"ticker": "^NDX", "name": "NDX"})
+            df = fetcher.fetch_index_history("^NDX")
             if df is None or len(df) == 0:
                 return None
             df = calc_all_indicators(df)
@@ -367,7 +367,10 @@ class NdxAdapter:
             fetcher = DataFetcher()
 
             # 1. NDX 状态
-            ndx_df = fetcher.fetch_index_history({"ticker": "^NDX", "name": "NDX"})
+            try:
+                ndx_df = fetcher.fetch_index_history("^NDX")
+            except Exception:
+                ndx_df = None
             ndx_status = None
             if ndx_df is not None and len(ndx_df) >= 2:
                 ndx_df = calc_all_indicators(ndx_df)
@@ -390,7 +393,12 @@ class NdxAdapter:
             else:
                 ndx_status = _mock_status()
 
-            # 2. 关键股票分析
+            # 2. 关键股票分析 — 先批量拉取，再逐个分析
+            all_symbols = []
+            for symbols in STOCK_UNIVERSE.values():
+                all_symbols.extend(symbols)
+            stocks_batch = fetcher.fetch_stocks_batch(all_symbols) if all_symbols else {}
+
             stocks = []
             for sector_name, symbols in STOCK_UNIVERSE.items():
                 for sym in symbols:
@@ -399,9 +407,9 @@ class NdxAdapter:
                         name = info.get("name", sym)
                     except Exception:
                         name = sym
-                    try:
-                        df = fetcher.fetch_stock_history({"ticker": sym, "name": sym})
-                        if df is not None and len(df) >= 2:
+                    df = stocks_batch.get(sym)
+                    if df is not None and len(df) >= 2:
+                        try:
                             df = calc_all_indicators(df)
                             last = df.iloc[-1]
                             prev = df.iloc[-2]
@@ -437,20 +445,23 @@ class NdxAdapter:
                                 ma60=round(ma60_v, 2), rsi14=round(rsi_v, 1),
                                 macd_signal=macd_sig, trend=trend, recommendation=rec,
                             ))
-                        else:
+                        except Exception as e:
+                            logger.debug("Stock %s calc failed: %s", sym, e)
                             stocks.append(StockAnalysis(
                                 symbol=sym, name=name, sector=sector_name))
-                    except Exception as e:
-                        logger.debug("Stock %s fetch failed: %s", sym, e)
+                    else:
                         stocks.append(StockAnalysis(
                             symbol=sym, name=name, sector=sector_name))
 
-            # 3. 板块轮动分析
+            # 3. 板块轮动分析 — 批量拉取 ETF
+            etf_symbols = list(SECTOR_ETFS.values())
+            etf_batch = fetcher.fetch_stocks_batch(etf_symbols) if etf_symbols else {}
+
             sectors = []
             for name, etf in SECTOR_ETFS.items():
-                try:
-                    df = fetcher.fetch_etf_history({"ticker": etf, "name": name})
-                    if df is not None and len(df) >= 2:
+                df = etf_batch.get(etf)
+                if df is not None and len(df) >= 2:
+                    try:
                         df = calc_all_indicators(df)
                         last = df.iloc[-1]
                         prev = df.iloc[-2]
@@ -465,10 +476,10 @@ class NdxAdapter:
                             ma20=round(ma20_v, 2), rsi14=round(rsi_v, 1),
                             rank=0,
                         ))
-                    else:
+                    except Exception as e:
+                        logger.debug("Sector %s calc failed: %s", etf, e)
                         sectors.append(SectorAnalysis(name=name, etf=etf))
-                except Exception as e:
-                    logger.debug("Sector %s fetch failed: %s", etf, e)
+                else:
                     sectors.append(SectorAnalysis(name=name, etf=etf))
             # 排名
             if sectors and all(s.change_pct != 0 for s in sectors):

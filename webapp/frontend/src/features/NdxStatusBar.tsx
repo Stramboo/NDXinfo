@@ -109,7 +109,7 @@ export function NdxStatusBar() {
 
       {data.ndx_analysis_report_path && (
         <a
-          href={`/${data.ndx_analysis_report_path}`}
+          href={`http://localhost:8765/${data.ndx_analysis_report_path}`}
           target="_blank"
           rel="noreferrer"
           className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 bg-bg-subtle hover:bg-bg-hover px-2.5 py-1.5 rounded transition"

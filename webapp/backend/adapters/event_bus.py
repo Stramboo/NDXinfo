@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 class EventBus:
     """异步事件总线；自带订阅管理"""
 
-    def __init__(self, maxsize: int = 1000):
+    def __init__(self, maxsize: int = 256):
         self._subscribers: list[asyncio.Queue] = []
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -35,12 +35,20 @@ class EventBus:
     async def publish(self, event: dict) -> None:
         async with self._lock:
             queues = list(self._subscribers)
+        dead = []
         for q in queues:
             try:
                 q.put_nowait(event)
             except asyncio.QueueFull:
-                # 满了就丢——前端通常跟得上
                 pass
+            except Exception:
+                dead.append(q)
+        # 清理死队列
+        if dead:
+            async with self._lock:
+                for q in dead:
+                    if q in self._subscribers:
+                        self._subscribers.remove(q)
 
     # 同步上下文（如 MockEngine.step()）里调用也能跑
     def publish_threadsafe(self, event: dict) -> None:
