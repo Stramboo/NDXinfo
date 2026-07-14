@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- Design tokens (CSS variables) ----------
+   切主题 = 在 <html> 上加/去 .dark class；所有 fg / bg / line 立即变更。 */
+
+html.dark {
+  color-scheme: dark;
+  --bg:         #0A0B0F;
+  --bg-panel:   #101218;
+  --bg-subtle:  #15171F;
+  --bg-input:   #0F1117;
+  --bg-hover:   #1A1D26;
+  --fg:         #E4E7EE;
+  --fg-muted:   #8A93A4;
+  --fg-dim:     #565E6E;
+  --line:       #1F222C;
+  --text-1:     #E4E7EE;
+  --text-2:     #8A93A4;
+  --text-3:     #565E6E;
+  --panel:      #101218;
+  color: var(--fg);
+}
+
+html.light {
+  color-scheme: light;
+  --bg:         #F7F8FA;
+  --bg-panel:   #FFFFFF;
+  --bg-subtle:  #EEF0F4;
+  --bg-input:   #FFFFFF;
+  --bg-hover:   #E5E8EE;
+  --fg:         #0E1116;
+  --fg-muted:   #5A6271;
+  --fg-dim:     #9AA1B1;
+  --line:       #D8DCE4;
+  --text-1:     #0E1116;
+  --text-2:     #5A6271;
+  --text-3:     #9AA1B1;
+  --panel:      #FFFFFF;
+  color: var(--fg);
+}
+
+/* 默认（无 .dark / .light）以 .dark 为基础，避免首屏 FOUC */
+html:not(.light):not(.dark) {
+  color-scheme: dark;
+  --bg:         #0A0B0F;
+  --bg-panel:   #101218;
+  --bg-subtle:  #15171F;
+  --bg-input:   #0F1117;
+  --bg-hover:   #1A1D26;
+  --fg:         #E4E7EE;
+  --fg-muted:   #8A93A4;
+  --fg-dim:     #565E6E;
+  --line:       #1F222C;
+  --panel:      #101218;
+  color: var(--fg);
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg);
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-dim); }
+
+*:focus-visible { outline: 2px solid #10B981; outline-offset: 2px; }
+
+/* 卡片 */
+.panel-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  transition: background .2s ease, border-color .2s ease;
+}
+.panel-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--fg-dim);
+}
+
+/* 涨跌色 */
+.text-pos { color: #10B981; }
+.text-neg { color: #F43F5E; }
+.text-flat { color: var(--fg-muted); }
+.bg-pos { background: rgba(16, 185, 129, .12); }
+.bg-neg { background: rgba(244, 63, 94, .12); }
+
+@keyframes flash-pos {
+  0%, 100% { background: transparent; }
+  50%      { background: rgba(16, 185, 129, .15); }
+}
+@keyframes flash-neg {
+  0%, 100% { background: transparent; }
+  50%      { background: rgba(244, 63, 94, .15); }
+}
+.flash-pos { animation: flash-pos 0.6s ease-out; }
+.flash-neg { animation: flash-neg 0.6s ease-out; }

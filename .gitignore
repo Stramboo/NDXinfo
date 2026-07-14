@@ -12,7 +12,14 @@ build/
 venv/
 env/
 .venv/
+
+# 密钥 / 配置（绝不入库）
 .env
+.env.*
+*.pem
+*.key
+**/apca_*
+**/APCA_*
 
 # IDE
 .vscode/
@@ -32,5 +39,21 @@ desktop.ini
 
 # 运行时数据（不纳入版本控制）
 data/
-reports/
+# reports/ 留着：NDX 分析报告输出供 webapp "查看今日报告" 链接
 output/
+
+# PyQt 截图（trader_dark.png / trader_light.png）— 功能证据，留！
+!examples/screenshots/
+
+# Coverage（运行时产物）
+.coverage
+htmlcov/
+coverage.xml
+
+# Node / Vite
+node_modules/
+webapp/frontend/dist/
+webapp/frontend/.vite/
+
+# pytest cache
+.pytest_cache/

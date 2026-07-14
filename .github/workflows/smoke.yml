@@ -1,0 +1,114 @@
+name: trader-smoke
+
+# 触发：每次 push / PR 都跑 smoke 测试
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+# 取消旧运行
+concurrency:
+  group: trader-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-tests:
+    name: Run trader smoke (pytest + 8 demos + GUI screenshots)
+    # Windows runner，跑这个 .bat；offscreen Qt 用环境变量切到 CI 模式
+    runs-on: windows-latest
+
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      QT_QPA_PLATFORM: offscreen      # Qt 在 CI 上无显示器，强制 offscreen
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # 优先安装项目声明的依赖；用 || true 容错（README 列了 PyYAML 可选）
+          python -m pip install -r requirements.txt || true
+          # 这些 demo / 截屏必须有的依赖，显式再装一次确保 CI 上不缺
+          python -m pip install pytest pytest-cov pyqtgraph PyQt5 pyautogui PyYAML
+
+      - name: Verify PyQt5 offscreen works
+        run: |
+          python -c "from PyQt5.QtWidgets import QApplication; import sys; a=QApplication(sys.argv); print('Qt ok platform=', a.platformName())"
+
+      - name: Run smoke batch
+        shell: cmd
+        run: examples\run_all_demos.bat
+
+      - name: Upload PNG screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-screenshots
+          path: examples/screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Summarize theme switching hashes
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "=== TraderMainWindow theme switching artifacts ==="
+          $d = 'examples/screenshots/trader_dark.png'
+          $l = 'examples/screenshots/trader_light.png'
+          if (Test-Path $d) {
+            $dh = (Get-FileHash $d -Algorithm SHA256).Hash.Substring(0, 16)
+            Write-Host ("  dark  SHA256 = {0}  size={1}" -f $dh, (Get-Item $d).Length)
+          }
+          if (Test-Path $l) {
+            $lh = (Get-FileHash $l -Algorithm SHA256).Hash.Substring(0, 16)
+            Write-Host ("  light SHA256 = {0}  size={1}" -f $lh, (Get-Item $l).Length)
+          }
+          if ((Test-Path $d) -and (Test-Path $l)) {
+            $a = (Get-FileHash $d -Algorithm SHA256).Hash
+            $b = (Get-FileHash $l -Algorithm SHA256).Hash
+            if ($a -eq $b) {
+              Write-Host "  ::warning::dark and light PNGs are byte-identical, theme switching may have regressed"
+            } else {
+              Write-Host "  ::notice::dark/light PNGs differ -> theme switching confirmed"
+            }
+          }
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs
+          path: |
+            logs/
+            **/__pycache__/
+            examples/screenshots/
+          retention-days: 3

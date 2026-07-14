@@ -1,0 +1,20 @@
+# pytest-cov 配置
+[run]
+branch = True
+source =
+    trading
+    backtest
+omit =
+    */__pycache__/*
+    */tests/*
+    */examples/*
+
+[report]
+# 报告里排掉 100% pass 的 __init__.py / dataclass 默认方法分支
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+show_missing = True
+skip_covered = False
+sort = Cover

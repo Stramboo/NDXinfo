@@ -1,0 +1,149 @@
+# -*- coding: utf-8 -*-
+"""
+回测报告输出（ReportWriter）
+
+支持:
+- write_json(path): 写入结构化指标 + 摘要
+- write_html(path): 写入简易 HTML 摘要，含 equity 曲线数据
+- write_csv_trades(path): 写入交易明细
+"""
+
+import csv
+import json
+import os
+from datetime import datetime
+from typing import Optional
+
+from backtest.engine import BacktestResult
+
+
+class ReportWriter:
+    """回测报告输出器。"""
+
+    def __init__(self, result: BacktestResult):
+        self.result = result
+
+    # ---------- JSON ----------
+
+    def write_json(self, path: str) -> str:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        payload = {
+            "generated_at": datetime.now().isoformat(),
+            "summary": self.result.summary(),
+            "equity_curve": self.result.portfolio.equity_curve,
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        return path
+
+    # ---------- CSV ----------
+
+    def write_csv_trades(self, path: str) -> str:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["ts", "symbol", "side", "qty", "price", "commission", "reason"])
+            for t in self.result.portfolio.trades:
+                writer.writerow([
+                    t.timestamp, t.symbol, t.side, t.quantity,
+                    f"{t.price:.4f}", f"{t.commission:.4f}", t.reason,
+                ])
+        return path
+
+    # ---------- HTML ----------
+
+    def write_html(self, path: str, title: Optional[str] = None) -> str:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        title = title or f"Backtest Report — {self.result.strategy_name}"
+        rows_metrics = "".join(
+            f"<tr><td>{k}</td><td>{v}</td></tr>"
+            for k, v in self.result.metrics.to_dict().items()
+        )
+        equity_rows = "".join(
+            f"<tr><td>{ts}</td><td>{eq:.2f}</td></tr>"
+            for ts, eq in self.result.portfolio.equity_curve
+        )
+        trade_rows = "".join(
+            f"<tr><td>{t.timestamp}</td><td>{t.symbol}</td><td>{t.side}</td>"
+            f"<td>{t.quantity}</td><td>{t.price:.2f}</td><td>{t.commission:.2f}</td>"
+            f"<td>{t.reason}</td></tr>"
+            for t in self.result.portfolio.trades
+        )
+
+        # 准备 equity chart 数据 (inline JSON)
+        equity_json = json.dumps(self.result.portfolio.equity_curve)
+
+        html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>{title}</title>
+<style>
+body {{ font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+        background:#0d1117; color:#c9d1d9; margin:0; padding:24px; }}
+h1, h2 {{ color:#58a6ff; }}
+table {{ border-collapse: collapse; width: 100%; margin: 12px 0; }}
+th, td {{ border: 1px solid #30363d; padding: 6px 10px; }}
+th {{ background: #161b22; }}
+.metric {{ width: 360px; }}
+.kpi {{ display:flex; flex-wrap:wrap; gap:12px; }}
+.kpi > div {{ background:#161b22; padding:12px 18px; border-radius:8px; min-width:160px; }}
+.kpi b {{ color:#3fb950; font-size:22px; }}
+small {{ color:#8b949e; }}
+</style>
+</head>
+<body>
+<h1>{title}</h1>
+<p><small>起止：{self.result.start_ts or '-'} → {self.result.end_ts or '-'} | 策略：{self.result.strategy_name} | 标的：{', '.join(self.result.symbols)}</small></p>
+
+<h2>关键指标</h2>
+<table class="metric">
+<thead><tr><th>指标</th><th>数值</th></tr></thead>
+<tbody>{rows_metrics}</tbody>
+</table>
+
+<h2>权益曲线</h2>
+<div id="equity_chart" style="height:300px;background:#161b22;border-radius:8px;padding:8px;">
+<canvas id="c" width="1200" height="280"></canvas>
+</div>
+<script>
+  const data = {equity_json};
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d');
+  if (!data.length) {{ document.getElementById('equity_chart').innerText='(无权益数据)'; }}
+  else {{
+    const W = c.width, H = c.height, pad = 30;
+    const xs = data.map((_,i)=>i);
+    const ys = data.map(d=>d[1]);
+    const ymin = Math.min(...ys), ymax = Math.max(...ys);
+    const xmin = 0, xmax = xs.length-1;
+    const sx = i => pad + (W-2*pad) * (i - xmin) / Math.max(1,(xmax-xmin));
+    const sy = v => H - pad - (H-2*pad) * (v - ymin) / Math.max(1e-9,(ymax-ymin));
+    ctx.strokeStyle = '#30363d'; ctx.beginPath();
+    for(let i=0;i<5;i++){{ const y=pad+(H-2*pad)*i/4; ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); }}
+    ctx.stroke();
+    ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2; ctx.beginPath();
+    data.forEach((d,i)=>{{ const X=sx(i), Y=sy(d[1]); if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }});
+    ctx.stroke();
+  }}
+</script>
+
+<h2>权益序列</h2>
+<table>
+<thead><tr><th>日期</th><th>权益</th></tr></thead>
+<tbody>{equity_rows}</tbody>
+</table>
+
+<h2>交易明细</h2>
+<table>
+<thead><tr><th>日期</th><th>代码</th><th>方向</th><th>数量</th><th>价格</th><th>佣金</th><th>原因</th></tr></thead>
+<tbody>{trade_rows}</tbody>
+</table>
+
+<p><small>Generated by ndxinfo/backtest. 仅用于研究与回测，不构成投资建议。</small></p>
+</body>
+</html>
+"""
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(html)
+        return path
