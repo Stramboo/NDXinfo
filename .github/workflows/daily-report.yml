@@ -104,6 +104,7 @@ jobs:
 
       - name: 部署报告到 gh-pages 分支
         if: steps.report.outputs.file != ''
+        continue-on-error: true       # gh-pages 权限不足时不阻止 job 成功
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
