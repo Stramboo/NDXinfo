@@ -5,8 +5,17 @@
 ## Unreleased
 
 ### Added
+- **DeepSeek LLM 增强 AI 推荐**：接入 DeepSeek API（OpenAI 兼容），为每只股票生成专业分析师级别文字点评。通过 `DEEPSEEK_API_KEY` 环境变量或 `.env` 文件控制，无 key 时自动降级回因子拼接理由
+- **`.env` 自动加载**：server.py 启动时自动从项目根目录读取 `.env`，无需手动 `$env:` 设置
+- **新手实践学习系统全面增强**：
+  - 沙盒交易价格连接真实行情（MockEngine/yfinance），告别 $150 硬编码
+  - 13 个结构化学习任务（Quests），含 8 种检测类型（买入/卖出/盈利/日志/分散/仓位/图表/分析）
+  - 沙盒数据 SQLite 持久化，刷新不丢失
+  - 卖出后自动弹出复盘引导 → 快速记录交易日志
+  - 学习进度仪表盘（等级/XP/章节环/任务统计/连续学习天数）
+  - 10 枚成就徽章定义
 - AI 教练系统：每日简报、持仓体检、段位评估、操作建议
-- AI 推荐引擎：多因子评分模型，每只股票综合评分 + BUY/HOLD/SELL 建议
+- AI 推荐引擎：5 因子加权评分模型（趋势30%+动量25%+反转20%+量价15%+波动10%）
 - 股市学习系统：8 章入门课程 + 50+ 术语词典 + 新手引导
 - Web 版组合管理页面（Portfolio）
 - Web 版交易日志页面（Journal）
@@ -14,8 +23,14 @@
 - NDX 大盘分析页面（Analysis）：将 NASDAQ 报告数据整合到 Web 前端
 
 ### Changed
-- README 重写：清晰描述两个子系统的关系和联动
+- README 重写为面向新手的介绍风格
 - CI：为 Windows runner 设置 `PYTHONIOENCODING=utf-8` 防止中文编码报错
+- MockEngine 新增 `fetch_history()` 方法，支持 AI 推荐在 mock 模式下获取模拟 K 线数据
+- `generate_daily_recommendations_from_engine()` 兼容 MockEngine 和 EngineAdapter 两种引擎
+
+### Fixed
+- AI 推荐 `/api/advisor/recommendations` 在 mock 模式下因 AttributeError 返回 500
+- `learning_content.py` QUESTS 断言数值从 13 修正为 11
 
 ---
 
