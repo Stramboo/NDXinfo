@@ -474,6 +474,31 @@ def generate_daily_recommendations_from_engine(engine_adapter) -> DailyRecommend
     strong_sell = [r for r in results if r.action == "STRONG_SELL"]
     top_picks = sorted(results, key=lambda r: r.score, reverse=True)[:5]
 
+    # ---- LLM 增强文字点评（可选，需 DEEPSEEK_API_KEY 环境变量）----
+    _ENABLE_LLM = os.environ.get("DEEPSEEK_API_KEY", "").strip() != ""
+    if _ENABLE_LLM and results:
+        try:
+            summaries = []
+            for r in results:
+                summaries.append({
+                    "symbol": r.symbol,
+                    "price": r.price,
+                    "change_pct": r.change_pct,
+                    "score": r.score,
+                    "action": r.action_label,
+                    "rsi": r.rsi,
+                    "macd": r.macd_signal,
+                    "factors_summary": ", ".join(
+                        f"{k}:{v.get('detail','')}" for k, v in r.factors.items() if v.get("detail")
+                    ),
+                })
+            llm_reasons = llm_analyze_batch(summaries)
+            for r in results:
+                if r.symbol in llm_reasons and llm_reasons[r.symbol]:
+                    r.reason = llm_reasons[r.symbol]
+        except Exception as e:
+            logger.warning(f"LLM 增强出错（不影响主流程）: {e}")
+
     avg_score = sum(r.score for r in results) / max(len(results), 1)
     if avg_score >= 60:
         market_summary = f"市场偏强，均分 {avg_score:.0f}/100"
@@ -527,4 +552,93 @@ def recommendations_to_dict(dr: DailyRecommendations) -> dict:
 __all__ = [
     "generate_daily_recommendations_from_engine", "recommendations_to_dict",
     "StockRecommendation", "DailyRecommendations", "analyze_stock",
+    "llm_analyze_batch",
 ]
+
+
+# ============================================================
+# LLM 增强分析（DeepSeek API，可选）
+# ============================================================
+
+def llm_analyze_batch(stocks: list[dict]) -> dict[str, str]:
+    """
+    批量调用 DeepSeek API 对多只股票生成自然语言技术点评。
+
+    Args:
+        stocks: [{symbol, price, change_pct, score, action, rsi, macd, trend, factors_summary}, ...]
+
+    Returns:
+        {symbol: 点评文字} 映射。未成功返回空 dict，上游用原有 reason 兜底。
+    """
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if not api_key:
+        logger.info("未设置 DEEPSEEK_API_KEY，跳过 LLM 增强")
+        return {}
+
+    if not stocks:
+        return {}
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+
+        # 构造 Prompt
+        system_prompt = (
+            "你是一位专业的股票技术分析师。"
+            "根据每只股票的技术指标数据，用中文给出 1-2 句简洁的技术面点评。"
+            "点评要专业、具体，提到关键指标的信号含义。"
+            "不要给出\"买入\"或\"卖出\"建议，只客观描述技术面现状和信号含义。"
+            "每条点评不超过 60 字。"
+        )
+
+        lines = []
+        for s in stocks:
+            # 格式: 代码|价格|日涨跌|RSI|MACD|趋势|评分(满分100)|因子摘要
+            lines.append(
+                f"{s['symbol']}|${s.get('price', 0):.2f}|{s.get('change_pct', 0):+.1f}%|"
+                f"RSI{s.get('rsi', '?')}|MACD {s.get('macd', '?')}|"
+                f"评分{s.get('score', 50)}|{s.get('factors_summary', '')[:120]}"
+            )
+
+        user_prompt = (
+            "以下是多只股票的技术指标数据。请按顺序逐只给出技术面点评，"
+            "格式为: 代码: 点评内容\n\n" + "\n".join(lines)
+        )
+
+        start = time.time()
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.6,
+            max_tokens=800,
+            timeout=30,
+        )
+        elapsed = time.time() - start
+        logger.info(f"DeepSeek API 调用成功，耗时 {elapsed:.1f}s")
+
+        content = response.choices[0].message.content or ""
+
+        # 解析返回的 "代码: 点评" 格式
+        result: dict[str, str] = {}
+        for line in content.strip().split("\n"):
+            line = line.strip()
+            if ":" in line or "：" in line:
+                parts = line.replace("：", ":").split(":", 1)
+                sym = parts[0].strip().upper()
+                comment = parts[1].strip()
+                if sym and comment:
+                    result[sym] = comment
+            elif len(line) > 10 and not result:
+                # fallback: 如果只有一条点评，匹配唯一 stock
+                if len(stocks) == 1:
+                    result[stocks[0]["symbol"]] = line
+
+        logger.info(f"LLM 成功生成 {len(result)}/{len(stocks)} 条点评")
+        return result
+
+    except Exception as e:
+        logger.warning(f"LLM 增强失败（将使用默认理由）: {e}")
+        return {}
