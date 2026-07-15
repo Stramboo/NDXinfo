@@ -64,6 +64,7 @@ from webapp.backend.userstore import UserStore  # noqa: E402
 from webapp.backend.coach import generate_briefing, get_ranking  # noqa: E402
 from webapp.backend.ai_advisor import generate_daily_recommendations_from_engine, recommendations_to_dict  # noqa: E402
 from webapp.backend.learning_content import CHAPTERS  # noqa: E402
+from webapp.backend.ai_coach import TradeCoach, enhance_with_llm  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
@@ -802,6 +803,62 @@ def create_trade_plan(req: dict) -> dict:
 @app.get("/api/trade-plans")
 def list_trade_plans(limit: int = 20) -> list[dict]:
     return state.userstore.trade_plan_list(limit)
+
+
+# -- AI 教练结构化反馈 --
+
+_coach = TradeCoach()
+
+
+@app.post("/api/coach/review")
+def coach_review(req: dict) -> dict:
+    """基于规则的交易教练评估（可选 LLM 增强）"""
+    trade = req.get("trade", {})
+    journal = req.get("journal")
+    plan = req.get("plan")
+    cash = req.get("cash", 100_000)
+    enable_llm = req.get("enable_llm", True)
+
+    report = _coach.evaluate(trade, journal=journal, plan=plan, cash=cash)
+
+    result = {
+        "overall": report.overall,
+        "grade": report.grade,
+        "decision": {
+            "score": report.decision.score,
+            "summary": report.decision.summary,
+            "breakdown": report.decision.breakdown,
+        },
+        "execution": {
+            "score": report.execution.score,
+            "summary": report.execution.summary,
+            "breakdown": report.execution.breakdown,
+        },
+        "risk": {
+            "score": report.risk.score,
+            "summary": report.risk.summary,
+            "breakdown": report.risk.breakdown,
+        },
+        "attribution": {
+            "score": report.attribution.score,
+            "summary": report.attribution.summary,
+            "breakdown": report.attribution.breakdown,
+        },
+        "highlights": report.highlights,
+        "improvements": report.improvements,
+        "llm_comment": "",
+    }
+
+    # 可选 LLM 增强
+    if enable_llm:
+        try:
+            comment = enhance_with_llm(report, trade)
+            if comment:
+                result["llm_comment"] = comment
+        except Exception:
+            pass  # LLM 失败不阻断规则评分
+
+    return result
 
 
 # -- 自选列表 --

@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSandboxStore } from "../store/sandboxStore";
 import { fmtMoney } from "../lib/utils";
 import { QuickJournal } from "./QuickJournal";
+import { CoachReview } from "./CoachReview";
 
 const AVAILABLE_SYMBOLS = ["NVDA", "AAPL", "TSLA", "MSFT", "GOOGL"];
 const REFRESH_INTERVAL_MS = 30_000; // 30 秒轮询刷新价格
@@ -32,6 +33,10 @@ export function SandboxTradePanel() {
   const [showTradePlan, setShowTradePlan] = useState(false);
   const [planReason, setPlanReason] = useState("");
   const [planSubmitting, setPlanSubmitting] = useState(false);
+  const [showCoach, setShowCoach] = useState(false);
+  const [coachResult, setCoachResult] = useState<any>(null);
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [lastTrade, setLastTrade] = useState<any>(null);
 
   // ---- 从后端获取真实价格 ----
   const fetchPrices = useCallback(async () => {
@@ -77,6 +82,7 @@ export function SandboxTradePanel() {
     }
     sellStock(symbol, quantity, currentPrice);
     setLastMsg(`已卖出 ${quantity} 股 ${symbol} @ $${fmtMoney(currentPrice)}`);
+    setLastTrade({ symbol, side: "SELL", quantity, price: currentPrice });
     setShowReviewPrompt(true);
   }
 
@@ -95,11 +101,36 @@ export function SandboxTradePanel() {
     if (quantity * currentPrice <= cash) {
       buyStock(symbol, quantity, currentPrice);
       setLastMsg(`已买入 ${quantity} 股 ${symbol} @ $${fmtMoney(currentPrice)}`);
+      setLastTrade({ symbol, side: "BUY", quantity, price: currentPrice, planReason });
     } else {
       setLastMsg("资金不足，无法完成买入。");
     }
     setShowTradePlan(false);
     setPlanReason("");
+  }
+
+  async function fetchCoach() {
+    if (!lastTrade) return;
+    setCoachLoading(true);
+    try {
+      const res = await fetch("/api/coach/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trade: lastTrade,
+          plan: lastTrade.planReason ? { reason: lastTrade.planReason, max_loss_pct: 5, position_pct: 10, planned_holding: "短期(1-5天)" } : null,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCoachResult(data);
+        setShowCoach(true);
+      }
+    } catch {
+      // 网络错误容忍
+    } finally {
+      setCoachLoading(false);
+    }
   }
 
   // 计算总市值（用于盈亏展示）
@@ -240,6 +271,24 @@ export function SandboxTradePanel() {
         <div className="px-3 py-2 rounded-lg bg-bg-subtle border border-line text-sm text-fg-muted">
           {lastMsg}
         </div>
+      )}
+
+      {/* AI教练评估触发 */}
+      {lastTrade && (
+        <button
+          onClick={fetchCoach}
+          disabled={coachLoading}
+          className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20
+                     text-xs text-purple-300 hover:bg-purple-500/20 transition
+                     disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {coachLoading ? "评估中..." : "🤖 AI教练评估"}
+        </button>
+      )}
+
+      {/* Coach Review */}
+      {showCoach && coachResult && (
+        <CoachReview result={coachResult} onClose={() => setShowCoach(false)} />
       )}
 
       {/* Trade Plan dialog (before buying) */}
