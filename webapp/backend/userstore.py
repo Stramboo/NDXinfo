@@ -180,6 +180,22 @@ CREATE TABLE IF NOT EXISTS cash_ledger (
     balance_after REAL NOT NULL,
     created_at TEXT NOT NULL
 );
+
+-- 交易计划（下单前必填）
+CREATE TABLE IF NOT EXISTS trade_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,        -- 'long'/'short'
+    reason TEXT NOT NULL,
+    plan_type TEXT DEFAULT 'quick', -- 'quick'/'detailed'
+    entry_price REAL,
+    target_price REAL,
+    stop_loss_price REAL,
+    max_loss_pct REAL,
+    position_pct REAL,
+    planned_holding TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -734,6 +750,38 @@ class UserStore:
             )
             self._get_conn().commit()
         return current_streak
+
+    # ---- 交易计划 ----
+
+    def trade_plan_create(self, symbol: str, direction: str, reason: str,
+                          entry_price: float = None, target_price: float = None,
+                          stop_loss_price: float = None, max_loss_pct: float = None,
+                          position_pct: float = None, planned_holding: str = None) -> dict:
+        now = _now()
+        with self._lock:
+            cur = self._get_conn().execute(
+                """INSERT INTO trade_plans (symbol, direction, reason, entry_price,
+                   target_price, stop_loss_price, max_loss_pct, position_pct,
+                   planned_holding, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (symbol.upper(), direction, reason, entry_price, target_price,
+                 stop_loss_price, max_loss_pct, position_pct, planned_holding, now),
+            )
+            self._get_conn().commit()
+            plan_id = cur.lastrowid
+        return {"id": plan_id, "symbol": symbol.upper(), "direction": direction, "created_at": now}
+
+    def trade_plan_list(self, limit: int = 20) -> list[dict]:
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM trade_plans ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{
+            "id": r[0], "symbol": r[1], "direction": r[2], "reason": r[3],
+            "plan_type": r[4], "entry_price": r[5], "target_price": r[6],
+            "stop_loss_price": r[7], "max_loss_pct": r[8], "position_pct": r[9],
+            "planned_holding": r[10], "created_at": r[11],
+        } for r in rows]
 
     # ---- 沙盒交易 ----
 

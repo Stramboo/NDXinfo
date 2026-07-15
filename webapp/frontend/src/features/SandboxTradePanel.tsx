@@ -29,6 +29,9 @@ export function SandboxTradePanel() {
   const [pricesLoading, setPricesLoading] = useState(true);
   const [lastMsg, setLastMsg] = useState<string | null>(null);
   const [showReviewPrompt, setShowReviewPrompt] = useState(false);
+  const [showTradePlan, setShowTradePlan] = useState(false);
+  const [planReason, setPlanReason] = useState("");
+  const [planSubmitting, setPlanSubmitting] = useState(false);
 
   // ---- 从后端获取真实价格 ----
   const fetchPrices = useCallback(async () => {
@@ -62,23 +65,41 @@ export function SandboxTradePanel() {
       return;
     }
     if (side === "BUY") {
-      const cost = quantity * currentPrice;
-      if (cost > cash) {
-        setLastMsg("资金不足，无法完成买入。");
-        return;
-      }
+      // 买入前弹出交易计划
+      setShowTradePlan(true);
+      return;
+    }
+    // SELL - 直接卖出
+    const pos = positions.find((p) => p.symbol === symbol);
+    if (!pos || quantity > pos.quantity) {
+      setLastMsg("持仓不足，无法完成卖出。");
+      return;
+    }
+    sellStock(symbol, quantity, currentPrice);
+    setLastMsg(`已卖出 ${quantity} 股 ${symbol} @ $${fmtMoney(currentPrice)}`);
+    setShowReviewPrompt(true);
+  }
+
+  function confirmBuy() {
+    if (!planReason.trim() || currentPrice == null) return;
+    setPlanSubmitting(true);
+    fetch("/api/trade-plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol, direction: "long", reason: planReason,
+        entry_price: currentPrice, max_loss_pct: 5, position_pct: 10,
+        planned_holding: "短期(1-5天)",
+      }),
+    }).finally(() => setPlanSubmitting(false));
+    if (quantity * currentPrice <= cash) {
       buyStock(symbol, quantity, currentPrice);
       setLastMsg(`已买入 ${quantity} 股 ${symbol} @ $${fmtMoney(currentPrice)}`);
     } else {
-      const pos = positions.find((p) => p.symbol === symbol);
-      if (!pos || quantity > pos.quantity) {
-        setLastMsg("持仓不足，无法完成卖出。");
-        return;
-      }
-      sellStock(symbol, quantity, currentPrice);
-      setLastMsg(`已卖出 ${quantity} 股 ${symbol} @ $${fmtMoney(currentPrice)}`);
-      setShowReviewPrompt(true);
+      setLastMsg("资金不足，无法完成买入。");
     }
+    setShowTradePlan(false);
+    setPlanReason("");
   }
 
   // 计算总市值（用于盈亏展示）
@@ -218,6 +239,44 @@ export function SandboxTradePanel() {
       {lastMsg && (
         <div className="px-3 py-2 rounded-lg bg-bg-subtle border border-line text-sm text-fg-muted">
           {lastMsg}
+        </div>
+      )}
+
+      {/* Trade Plan dialog (before buying) */}
+      {showTradePlan && (
+        <div className="mt-2 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20 space-y-3">
+          <p className="text-sm font-medium text-blue-300">📋 交易前计划</p>
+          <p className="text-xs text-fg-muted">
+            买入前请说明你的判断依据（技术指标、新闻、趋势等）：
+          </p>
+          <textarea
+            value={planReason}
+            onChange={(e) => setPlanReason(e.target.value)}
+            placeholder="例如：MACD 金叉、RSI 超卖反弹、突破前高..."
+            rows={3}
+            className="w-full bg-bg-input border border-line rounded-lg px-3 py-2
+                       text-sm text-fg resize-none focus:outline-none focus:border-blue-500"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={confirmBuy}
+              disabled={!planReason.trim() || planSubmitting}
+              className="px-4 py-2 rounded-lg bg-emerald-500 text-bg text-sm font-bold
+                         hover:bg-emerald-400 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {planSubmitting ? "提交中..." : `确认买入 ${quantity} 股`}
+            </button>
+            <button
+              onClick={() => {
+                setShowTradePlan(false);
+                setPlanReason("");
+              }}
+              className="px-4 py-2 rounded-lg bg-bg-subtle border border-line text-fg-muted
+                         text-sm font-medium hover:bg-bg-hover transition"
+            >
+              取消
+            </button>
+          </div>
         </div>
       )}
 

@@ -782,6 +782,28 @@ def reset_sandbox() -> dict:
     return {"ok": True}
 
 
+# ---- 交易计划 ----
+
+@app.post("/api/trade-plans")
+def create_trade_plan(req: dict) -> dict:
+    return state.userstore.trade_plan_create(
+        symbol=req.get("symbol", ""),
+        direction=req.get("direction", "long"),
+        reason=req.get("reason", ""),
+        entry_price=req.get("entry_price"),
+        target_price=req.get("target_price"),
+        stop_loss_price=req.get("stop_loss_price"),
+        max_loss_pct=req.get("max_loss_pct"),
+        position_pct=req.get("position_pct"),
+        planned_holding=req.get("planned_holding"),
+    )
+
+
+@app.get("/api/trade-plans")
+def list_trade_plans(limit: int = 20) -> list[dict]:
+    return state.userstore.trade_plan_list(limit)
+
+
 # -- 自选列表 --
 
 @app.get("/api/watchlists")
