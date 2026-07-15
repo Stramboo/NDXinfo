@@ -170,6 +170,16 @@ CREATE TABLE IF NOT EXISTS sandbox_orders (
     price REAL NOT NULL,
     ts INTEGER NOT NULL
 );
+
+-- 现金账本（每一笔现金变动可追溯）
+CREATE TABLE IF NOT EXISTS cash_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT,
+    entry_type TEXT NOT NULL,    -- 'BUY', 'SELL', 'COMMISSION', 'TRANSFER'
+    amount REAL NOT NULL,         -- 正=入金, 负=出金
+    balance_after REAL NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -763,6 +773,12 @@ class UserStore:
                 "UPDATE sandbox_account SET cash = cash - ?, updated_at = ? WHERE id = 1 AND cash >= ?",
                 (cost, now, cost),
             )
+            # 现金账本
+            balance = conn.execute("SELECT cash FROM sandbox_account WHERE id=1").fetchone()
+            conn.execute(
+                "INSERT INTO cash_ledger (order_id, entry_type, amount, balance_after, created_at) VALUES (?,?,?,?,?)",
+                (order_id, "BUY", -cost, float(balance[0]) if balance else 0, now),
+            )
             # 更新持仓
             existing = conn.execute(
                 "SELECT quantity, avg_cost FROM sandbox_positions WHERE symbol=?", (symbol,)
@@ -798,6 +814,12 @@ class UserStore:
                 "UPDATE sandbox_account SET cash = cash + ?, updated_at = ? WHERE id = 1",
                 (revenue, now),
             )
+            # 现金账本
+            balance = conn.execute("SELECT cash FROM sandbox_account WHERE id=1").fetchone()
+            conn.execute(
+                "INSERT INTO cash_ledger (order_id, entry_type, amount, balance_after, created_at) VALUES (?,?,?,?,?)",
+                (order_id, "SELL", revenue, float(balance[0]) if balance else 0, now),
+            )
             # 更新持仓
             existing = conn.execute(
                 "SELECT quantity FROM sandbox_positions WHERE symbol=?", (symbol,)
@@ -825,11 +847,47 @@ class UserStore:
             ).fetchall()
         return [{"order_id": r[0], "symbol": r[1], "side": r[2], "quantity": r[3], "price": r[4], "ts": r[5]} for r in rows]
 
+    def cash_ledger_list(self, limit: int = 100) -> list[dict]:
+        """查询现金账本"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM cash_ledger ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{"id": r[0], "order_id": r[1], "entry_type": r[2], "amount": r[3], "balance_after": r[4], "created_at": r[5]} for r in rows]
+
+    def sandbox_rebuild_positions(self) -> dict:
+        """从 sandbox_orders 重建持仓（验证 Order/Fill一致性的关键能力）"""
+        with self._lock:
+            conn = self._get_conn()
+            rows = conn.execute(
+                "SELECT symbol, side, quantity, price FROM sandbox_orders ORDER BY ts ASC"
+            ).fetchall()
+        positions: dict[str, dict] = {}
+        for symbol, side, qty, price in rows:
+            if side == "BUY":
+                if symbol not in positions:
+                    positions[symbol] = {"quantity": 0, "total_cost": 0}
+                positions[symbol]["quantity"] += qty
+                positions[symbol]["total_cost"] += qty * price
+            else:
+                if symbol in positions:
+                    positions[symbol]["quantity"] -= qty
+                    if positions[symbol]["quantity"] <= 0:
+                        del positions[symbol]
+        result = {}
+        for sym, p in positions.items():
+            result[sym] = {
+                "quantity": p["quantity"],
+                "avg_cost": round(p["total_cost"] / p["quantity"], 4) if p["quantity"] > 0 else 0,
+            }
+        return result
+
     def sandbox_reset(self):
         with self._lock:
             conn = self._get_conn()
             conn.execute("DELETE FROM sandbox_positions")
             conn.execute("DELETE FROM sandbox_orders")
+            conn.execute("DELETE FROM cash_ledger")
             conn.execute("DELETE FROM sandbox_account")
             conn.commit()
 
