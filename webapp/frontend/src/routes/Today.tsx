@@ -29,30 +29,29 @@ export function Today() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/learning/progress")
+    fetch("/api/learning/chapters")
       .then((r) => r.json())
       .then((data) => {
-        // 从 progress 构建今日状态
-        const chapters = data?.chapterProgress || [];
+        const chapters = data?.chapters || [];
         const done = chapters.filter((c: any) => c.completed).length;
         const current = chapters.find((c: any) => !c.completed);
+        const stage = current?.category || "股票是什么";
         setState({
-          level: data?.level || 1,
-          xp: data?.xp || 0,
-          nextXp: data?.nextLevelXp || 100,
+          level: 1,
+          xp: done * 50,
+          nextXp: 100,
           chapterDone: done,
-          chapterTotal: chapters.length || 8,
-          currentChapterId: current?.chapterId || data?.currentChapterId || "ch01",
-          currentChapterTitle: current?.title || data?.currentChapterTitle || "股票是什么",
-          currentLessonTitle: current?.currentLesson || "认识公司与股份",
-          streak: data?.streak || 0,
+          chapterTotal: chapters.length || 24,
+          currentChapterId: current?.id || "ch01",
+          currentChapterTitle: stage,
+          currentLessonTitle: current?.title || "认识公司与股份",
+          streak: 1,
         });
       })
       .catch(() => {
-        // 降级：显示默认引导
         setState({
           level: 1, xp: 0, nextXp: 100,
-          chapterDone: 0, chapterTotal: 8,
+          chapterDone: 0, chapterTotal: 24,
           currentChapterId: "ch01",
           currentChapterTitle: "股票是什么",
           currentLessonTitle: "认识公司与股份",

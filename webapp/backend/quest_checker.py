@@ -53,8 +53,11 @@ def check_quest(quest: dict, context: dict) -> bool:
                 if pct > max_pct:
                     return False
             return len(positions) > 0  # 至少有一只持仓才算有效
-        elif qtype in ("chart_view", "indicator_view", "analysis_view"):
+        elif qtype in ("chart_view", "indicator_view", "analysis_view", "explore_view"):
             # 这些类型通过前端传 completed=true 来标记
+            return context.get("completed", False)
+        elif qtype in ("quiz_complete", "risk_calc_done", "trade_plan_create", "trade_plan_with_stop"):
+            # 也通过前端传 completed=true 来标记
             return context.get("completed", False)
         else:
             logger.warning(f"未知任务类型: {qtype}")

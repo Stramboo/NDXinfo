@@ -63,7 +63,7 @@ from webapp.backend.adapters.ndx_adapter import NdxAdapter  # noqa: E402
 from webapp.backend.userstore import UserStore  # noqa: E402
 from webapp.backend.coach import generate_briefing, get_ranking  # noqa: E402
 from webapp.backend.ai_advisor import generate_daily_recommendations_from_engine, recommendations_to_dict  # noqa: E402
-from webapp.backend.learning_content import CHAPTERS  # noqa: E402
+from webapp.backend.learning_content import STAGES, LESSONS, GLOSSARY, QUESTS  # noqa: E402
 from webapp.backend.ai_coach import TradeCoach, enhance_with_llm  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
@@ -603,25 +603,59 @@ def search_glossary(q: str) -> list[dict]:
     return state.userstore.glossary_search(q)
 
 
+@app.get("/api/learning/stages")
+def get_learning_stages() -> dict:
+    """获取六阶段学习路线"""
+    progress = {}
+    for p in state.userstore.learning_progress_list():
+        progress[p["chapter_id"]] = p["completed"]
+    stages_out = []
+    for stage in STAGES:
+        stage_lessons = [l for l in LESSONS if l["stage_id"] == stage["id"]]
+        lessons_done = sum(1 for l in stage_lessons if progress.get(l["id"], False))
+        stages_out.append({
+            "id": stage["id"],
+            "title": stage["title"],
+            "subtitle": stage["subtitle"],
+            "description": stage["description"],
+            "icon": stage["icon"],
+            "color": stage["color"],
+            "prerequisite_stage": stage.get("prerequisite_stage"),
+            "lessons_total": len(stage_lessons),
+            "lessons_done": lessons_done,
+            "unlocked": stage.get("prerequisite_stage") is None or any(
+                progress.get(l["id"], False) for l in LESSONS
+                if l["stage_id"] == stage["prerequisite_stage"]
+            ),
+        })
+    return {"stages": stages_out}
+
+
 @app.get("/api/learning/chapters")
 def get_learning_chapters() -> dict:
-    """获取章节列表，附带学习进度"""
+    """获取全部课时列表，附带学习进度"""
     progress = {}
     for p in state.userstore.learning_progress_list():
         progress[p["chapter_id"]] = p["completed"]
     chapters_out = []
-    for i, ch in enumerate(CHAPTERS):
-        ch_copy = {
+    for i, ch in enumerate(LESSONS):
+        stage = next((s for s in STAGES if s["id"] == ch["stage_id"]), None)
+        chapters_out.append({
             "id": ch["id"],
-            "number": i + 1,
+            "number": ch["number"],
             "title": ch["title"],
             "summary": ch["summary"],
-            "category": ch.get("group", ""),
+            "question": ch["question"],
+            "analogy": ch["analogy"],
+            "concept": ch["concept"],
+            "category": stage["title"] if stage else "",
+            "stage_id": ch["stage_id"],
             "sections": [{"heading": s["title"], "paragraphs": s["body"]} for s in ch["sections"]],
             "interactive": ch.get("interactive"),
+            "pitfall": ch.get("pitfall", ""),
+            "xp": ch.get("xp", 50),
             "completed": bool(progress.get(ch["id"], False)),
-        }
-        chapters_out.append(ch_copy)
+        })
     return {"chapters": chapters_out}
 
 
@@ -644,7 +678,6 @@ def mark_learning_progress(req: dict) -> dict:
 @app.get("/api/learning/quests")
 def get_learning_quests(chapter_id: str = None) -> dict:
     """获取任务列表，附带完成状态"""
-    from webapp.backend.learning_content import QUESTS
     completed_map = {}
     for p in state.userstore.quest_list():
         if p.get("completed"):
@@ -673,7 +706,6 @@ def check_quest(req: dict) -> dict:
     if not quest_id:
         raise HTTPException(400, "quest_id required")
 
-    from webapp.backend.learning_content import QUESTS
     from webapp.backend.quest_checker import check_quest
 
     quest = next((q for q in QUESTS if q["id"] == quest_id), None)
@@ -695,7 +727,6 @@ def check_quest(req: dict) -> dict:
 @app.get("/api/learning/progress/dashboard")
 def get_learning_dashboard() -> dict:
     """学习进度仪表盘数据聚合"""
-    from webapp.backend.learning_content import CHAPTERS, QUESTS
     progress_list = state.userstore.learning_progress_list()
     completed_chapters = sum(1 for p in progress_list if p.get("completed"))
     quest_list = state.userstore.quest_list()
@@ -719,23 +750,38 @@ def get_learning_dashboard() -> dict:
 
     # 章节详情
     chapters_detail = []
-    for i, ch in enumerate(CHAPTERS):
+    for ch in LESSONS:
         completed = any(p.get("chapter_id") == ch["id"] and p.get("completed") for p in progress_list)
         chapter_quests = [q for q in QUESTS if q.get("chapter_id") == ch["id"]]
         ch_completed_quests = sum(1 for q in chapter_quests for qp in quest_list if qp.get("quest_id") == q["id"] and qp.get("completed"))
+        stage = next((s for s in STAGES if s["id"] == ch["stage_id"]), None)
         chapters_detail.append({
             "id": ch["id"],
-            "number": i + 1,
+            "number": ch["number"],
             "title": ch["title"],
-            "category": ch.get("group", ""),
+            "category": stage["title"] if stage else "",
+            "stage_id": ch["stage_id"],
             "completed": completed,
             "quests_done": ch_completed_quests,
             "quests_total": len(chapter_quests),
         })
 
+    # 阶段进度
+    stages_detail = []
+    for stage in STAGES:
+        stage_lessons = [l for l in LESSONS if l["stage_id"] == stage["id"]]
+        stage_done = sum(1 for l in stage_lessons for p in progress_list if p.get("chapter_id") == l["id"] and p.get("completed"))
+        stages_detail.append({
+            "id": stage["id"],
+            "title": stage["title"],
+            "icon": stage["icon"],
+            "lessons_total": len(stage_lessons),
+            "lessons_done": stage_done,
+        })
+
     return {
         "chapters_completed": completed_chapters,
-        "chapters_total": len(CHAPTERS),
+        "chapters_total": len(LESSONS),
         "quests_completed": completed_quests,
         "quests_total": len(QUESTS),
         "total_xp": total_xp,
@@ -743,6 +789,7 @@ def get_learning_dashboard() -> dict:
         "next_level_xp": next_level_xp,
         "streak_days": streak_days,
         "chapters": chapters_detail,
+        "stages": stages_detail,
     }
 
 
