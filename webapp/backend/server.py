@@ -64,6 +64,7 @@ from webapp.backend.userstore import UserStore  # noqa: E402
 from webapp.backend.coach import generate_briefing, get_ranking  # noqa: E402
 from webapp.backend.ai_advisor import generate_daily_recommendations_from_engine, recommendations_to_dict  # noqa: E402
 from webapp.backend.learning_content import STAGES, LESSONS, GLOSSARY, QUESTS  # noqa: E402
+from webapp.backend.explorer import MARKETS, COMPANIES, INDUSTRIES, get_market_status, get_companies  # noqa: E402
 from webapp.backend.ai_coach import TradeCoach, enhance_with_llm  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
@@ -791,6 +792,54 @@ def get_learning_dashboard() -> dict:
         "chapters": chapters_detail,
         "stages": stages_detail,
     }
+
+
+# ---- 世界市场探索 API (Phase 3) ----
+
+@app.get("/api/explore/markets")
+def explore_markets() -> list[dict]:
+    """获取所有市场的列表（含交易状态）"""
+    result = []
+    for m in MARKETS:
+        status = get_market_status(m["id"])
+        result.append({**m, "status": status})
+    return result
+
+
+@app.get("/api/explore/markets/{market_id}")
+def explore_market_detail(market_id: str) -> dict:
+    """获取单个市场详情"""
+    m = next((m for m in MARKETS if m["id"] == market_id), None)
+    if not m:
+        raise HTTPException(404, f"Market '{market_id}' not found")
+    status = get_market_status(market_id)
+    market_companies = get_companies(market=market_id)
+    return {**m, "status": status, "companies": market_companies, "companyCount": len(market_companies)}
+
+
+@app.get("/api/explore/companies")
+def explore_companies(
+    market: str = None, sector: str = None,
+    industry: str = None, search: str = None
+) -> list[dict]:
+    """搜索/过滤公司"""
+    return get_companies(market=market, sector=sector, industry=industry, search=search)
+
+
+@app.get("/api/explore/companies/{symbol}")
+def explore_company_detail(symbol: str) -> dict:
+    """获取单个公司详情"""
+    c = next((c for c in COMPANIES if c["symbol"].upper() == symbol.upper()), None)
+    if not c:
+        raise HTTPException(404, f"Company '{symbol}' not found")
+    market = next((m for m in MARKETS if m["id"] == c["market"]), None)
+    return {**c, "marketInfo": market}
+
+
+@app.get("/api/explore/industries")
+def explore_industries() -> list[dict]:
+    """获取行业分类列表"""
+    return INDUSTRIES
 
 
 # ---- 沙盒交易 API ----
