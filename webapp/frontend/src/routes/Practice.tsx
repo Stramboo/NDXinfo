@@ -1,13 +1,36 @@
 /**
- * Practice.tsx — 模拟练习入口
+ * Practice.tsx — 模拟练习入口 (Phase 4+5)
  *
  * 三层模式：引导式练习 → 情景训练 → 自由模拟
- * Phase 4/5 会扩展，当前提供沙盒交易入口。
  */
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Gamepad2, FlaskConical, Compass } from "lucide-react";
 
+interface ScenarioInfo {
+  id: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  xp: number;
+  steps_count: number;
+}
+
+const DIFFICULTY: Record<string, string> = {
+  easy: "初",
+  medium: "中",
+};
+
 export function Practice() {
+  const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
+
+  useEffect(() => {
+    fetch("/api/practice/scenarios")
+      .then((r) => r.json())
+      .then(setScenarios)
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="max-w-2xl mx-auto py-8 px-4 space-y-8">
       <div className="space-y-2">
@@ -41,21 +64,40 @@ export function Practice() {
           </div>
         </Link>
 
-        {/* 情景训练 */}
-        <div className="rounded-xl bg-bg-panel border border-line p-5 opacity-60">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
-              <FlaskConical className="w-5 h-5 text-amber-400" />
+        {/* 情景训练 — 动态列表 */}
+        {scenarios.length > 0 && (
+          <div className="rounded-xl bg-bg-panel border border-amber-500/20 p-5 space-y-3">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                <FlaskConical className="w-5 h-5 text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-fg">情景训练</p>
+                <p className="text-xs text-fg-muted mt-1">
+                  在预设的市场场景中练习判断。选择场景开始训练。
+                </p>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-fg">情景训练</p>
-              <p className="text-xs text-fg-muted mt-1">
-                在预设的市场场景中练习判断。公司出利好怎么办？市场大跌怎么应对？
-              </p>
+            <div className="space-y-2 pt-1">
+              {scenarios.map((s) => (
+                <Link
+                  key={s.id}
+                  to={`/practice/scenario/${s.id}`}
+                  className="flex items-center gap-3 rounded-lg bg-bg-subtle p-3 hover:bg-amber-500/5 transition border border-line hover:border-amber-500/20"
+                >
+                  <span className="shrink-0 w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-[10px] font-bold text-amber-400">
+                    {DIFFICULTY[s.difficulty] || "?"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-fg truncate">{s.title}</p>
+                    <p className="text-xs text-fg-dim truncate">{s.description}</p>
+                  </div>
+                  <span className="text-xs text-fg-dim shrink-0">{s.xp} XP</span>
+                </Link>
+              ))}
             </div>
-            <span className="text-xs text-fg-dim">即将开放</span>
           </div>
-        </div>
+        )}
 
         {/* 自由模拟 */}
         <div className="rounded-xl bg-bg-panel border border-line p-5 opacity-60">

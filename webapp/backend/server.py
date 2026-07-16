@@ -65,6 +65,7 @@ from webapp.backend.coach import generate_briefing, get_ranking  # noqa: E402
 from webapp.backend.ai_advisor import generate_daily_recommendations_from_engine, recommendations_to_dict  # noqa: E402
 from webapp.backend.learning_content import STAGES, LESSONS, GLOSSARY, QUESTS  # noqa: E402
 from webapp.backend.explorer import MARKETS, COMPANIES, INDUSTRIES, get_market_status, get_companies  # noqa: E402
+from webapp.backend.practice import calc_position, calc_stop_loss, SCENARIOS, evaluate_scenario_decisions  # noqa: E402
 from webapp.backend.ai_coach import TradeCoach, enhance_with_llm  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
@@ -840,6 +841,118 @@ def explore_company_detail(symbol: str) -> dict:
 def explore_industries() -> list[dict]:
     """获取行业分类列表"""
     return INDUSTRIES
+
+
+# ---- 练习 & 情景训练 API (Phase 4+5) ----
+
+class RiskCalcReq(BaseModel):
+    account_size: float = Field(..., gt=0)
+    stock_price: float = Field(..., gt=0)
+    stop_loss_pct: float = Field(..., gt=0, le=50)
+    max_loss_per_trade: float = Field(..., gt=0)
+
+
+@app.post("/api/practice/risk-calc")
+def practice_risk_calc(req: RiskCalcReq) -> dict:
+    """仓位计算器：根据账户资金、股价、止损比例和最大亏损计算合理仓位"""
+    return calc_position(req.account_size, req.stock_price,
+                         req.stop_loss_pct, req.max_loss_per_trade)
+
+
+@app.get("/api/practice/scenarios")
+def practice_scenarios() -> list[dict]:
+    """获取所有情景训练列表（不含详细步骤）"""
+    return [
+        {
+            "id": s["id"], "title": s["title"],
+            "description": s["description"], "difficulty": s["difficulty"],
+            "xp": s["xp"], "steps_count": len(s["steps"]),
+        }
+        for s in SCENARIOS
+    ]
+
+
+@app.get("/api/practice/scenarios/{scenario_id}")
+def practice_scenario_detail(scenario_id: str) -> dict:
+    """获取单个情景训练的完整内容"""
+    s = next((s for s in SCENARIOS if s["id"] == scenario_id), None)
+    if not s:
+        raise HTTPException(404, f"Scenario '{scenario_id}' not found")
+    return s
+
+
+class ScenarioEvalReq(BaseModel):
+    decisions: list[dict] = []
+
+
+@app.post("/api/practice/scenarios/{scenario_id}/evaluate")
+def practice_scenario_evaluate(scenario_id: str, req: ScenarioEvalReq) -> dict:
+    """评估情景训练的决策结果"""
+    s = next((s for s in SCENARIOS if s["id"] == scenario_id), None)
+    if not s:
+        raise HTTPException(404, f"Scenario '{scenario_id}' not found")
+    result = evaluate_scenario_decisions(req.decisions)
+    result["scenario_title"] = s["title"]
+    result["xp_earned"] = round(s["xp"] * result["score"] / 100)
+    result["takeaway"] = s["takeaway"]
+    return result
+
+
+# ---- AI 教练增强 API (Phase 6) ----
+
+
+@app.get("/api/coach/weekly-report")
+def coach_weekly_report() -> dict:
+    """生成每周学习/交易总结"""
+    import datetime
+    
+    progress = state.userstore.learning_progress_list()
+    quest_list = state.userstore.quest_list()
+    sandbox = state.userstore.sandbox_get()
+    journal_entries = state.userstore.journal_list()
+    journal_count = len(journal_entries)
+
+    today = datetime.date.today()
+    week_start = today - datetime.timedelta(days=today.weekday())
+    completed_lessons = [p for p in progress if p.get("completed")]
+    done_quests = [q for q in quest_list if q.get("completed")]
+
+    orders = state.userstore.sandbox_orders_list()
+    total_trades = len(orders)
+    buy_trades = sum(1 for o in orders if o.get("side") == "BUY")
+    sell_trades = sum(1 for o in orders if o.get("side") == "SELL")
+
+    ranking = get_ranking()
+
+    report = {
+        "week": f"{week_start} ~ {today}",
+        "ranking": ranking,
+        "learning": {
+            "lessons_completed": len(completed_lessons),
+            "lessons_total": 24,
+            "quests_completed": len(done_quests),
+            "quests_total": len(QUESTS),
+        },
+        "trading": {
+            "total_trades": total_trades,
+            "buy_trades": buy_trades,
+            "sell_trades": sell_trades,
+            "journal_entries": journal_count,
+            "sandbox_equity": sandbox.get("equity", 0),
+        },
+        "tips": [],
+    }
+
+    if total_trades < 5:
+        report["tips"].append("本周交易次数较少，多练习才能积累经验。")
+    if journal_count == 0:
+        report["tips"].append("本周还没写交易日志。复盘是进步的加速器！")
+    if len(completed_lessons) < 4:
+        report["tips"].append("学习进度可以再快一点，每天一课只需要 5-10 分钟。")
+    if sell_trades > 0 and buy_trades < sell_trades:
+        report["tips"].append("卖出多于买入，检查一下是止盈还是恐慌卖出。")
+
+    return report
 
 
 # ---- 沙盒交易 API ----
