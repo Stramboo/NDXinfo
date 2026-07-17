@@ -68,6 +68,7 @@ from webapp.backend.explorer import MARKETS, COMPANIES, INDUSTRIES, get_market_s
 from webapp.backend.practice import calc_position, calc_stop_loss, SCENARIOS, evaluate_scenario_decisions  # noqa: E402
 from webapp.backend.review_engine import create_trade_review, MISTAKE_PATTERNS  # noqa: E402
 from webapp.backend.coach_chat import chat as coach_chat  # noqa: E402
+from webapp.backend.daily_challenge import get_daily_challenge, CHALLENGE_POOL  # noqa: E402
 from webapp.backend.ai_coach import TradeCoach, enhance_with_llm  # noqa: E402
 
 # v2.3 Phase 1: 真实数据 Provider（可选）
@@ -1022,6 +1023,31 @@ def coach_chat_api(req: ChatReq) -> dict:
         "response": response,
         "ts": int(time.time() * 1000),
     }
+
+
+# ---- 每日挑战 API (v2.3 Phase 5) ----
+
+@app.get("/api/challenges/daily")
+def get_daily_challenge_api() -> dict:
+    """获取今日挑战"""
+    # TODO: 从用户数据计算等级
+    user_level = 1
+    challenge = get_daily_challenge(user_level)
+    return challenge
+
+
+@app.get("/api/challenges/pool")
+def get_challenge_pool() -> list[dict]:
+    """获取所有挑战模板"""
+    return CHALLENGE_POOL
+
+
+@app.post("/api/challenges/complete")
+def complete_challenge(req: dict) -> dict:
+    """标记挑战完成"""
+    challenge_id = req.get("challenge_id", "")
+    # TODO: 验证挑战完成条件 + 发放 XP
+    return {"ok": True, "challenge_id": challenge_id, "xp_earned": 30}
 
 
 # ---- 沙盒交易 API ----

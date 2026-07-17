@@ -10,8 +10,20 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { GraduationCap, Gamepad2, Globe, MessageCircle } from "lucide-react";
+import { GraduationCap, Gamepad2, Globe, MessageCircle, Target } from "lucide-react";
 import { CoachChat } from "../features/CoachChat";
+
+interface Challenge {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  xp: number;
+  target: number;
+  date: string;
+  completed: boolean;
+  progress: number;
+}
 
 interface LearningState {
   level: number;
@@ -29,6 +41,7 @@ export function Today() {
   const [state, setState] = useState<LearningState | null>(null);
   const [loading, setLoading] = useState(true);
   const [showChat, setShowChat] = useState(false);
+  const [challenge, setChallenge] = useState<Challenge | null>(null);
 
   useEffect(() => {
     fetch("/api/learning/chapters")
@@ -61,6 +74,12 @@ export function Today() {
         });
       })
       .finally(() => setLoading(false));
+
+    // 加载今日挑战
+    fetch("/api/challenges/daily")
+      .then((r) => r.json())
+      .then(setChallenge)
+      .catch(() => {});
   }, []);
 
   if (loading) {
@@ -143,6 +162,27 @@ export function Today() {
               className="h-full rounded-full bg-emerald-500 transition-all duration-700"
               style={{ width: `${Math.round((state.chapterDone / state.chapterTotal) * 100)}%` }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* 今日挑战 */}
+      {challenge && (
+        <div className="rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0">
+              <Target className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-amber-400 font-medium">今日挑战</p>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                  +{challenge.xp} XP
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-fg mt-1">{challenge.title}</p>
+              <p className="text-xs text-fg-muted mt-0.5">{challenge.description}</p>
+            </div>
           </div>
         </div>
       )}
