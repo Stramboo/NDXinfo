@@ -26,9 +26,12 @@ export function Me() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/learning/progress/dashboard")
-      .then((r) => r.json())
-      .then((data) => {
+    // 并行加载 dashboard + 真实成就
+    Promise.all([
+      fetch("/api/learning/progress/dashboard").then((r) => r.json()).catch(() => null),
+      fetch("/api/achievements").then((r) => r.json()).catch(() => []),
+    ])
+      .then(([data, achievements]) => {
         setProfile({
           level: data?.level_num || 1,
           xp: data?.total_xp || 0,
@@ -38,7 +41,9 @@ export function Me() {
           streak: data?.streak_days || 0,
           questsCompleted: data?.quests_completed || 0,
           questsTotal: data?.quests_total || 16,
-          achievements: data?.achievements || [],
+          achievements: (achievements || []).map((a: any) => ({
+            id: a.key, name: a.name, desc: a.desc, unlocked: a.unlocked,
+          })),
         });
       })
       .catch(() => {
@@ -122,15 +127,15 @@ export function Me() {
       {/* 成就 */}
       {p.achievements.length > 0 && (
         <div className="space-y-3">
-          <p className="text-xs text-fg-muted uppercase tracking-wider">成就</p>
+          <p className="text-xs text-fg-muted uppercase tracking-wider">成就徽章</p>
           <div className="grid grid-cols-2 gap-2">
             {p.achievements.map((a) => (
               <div
                 key={a.id}
-                className={`rounded-lg border p-3 text-xs ${
+                className={`glass-light rounded-[14px] p-3 text-xs transition ${
                   a.unlocked
-                    ? "bg-amber-500/5 border-amber-500/20"
-                    : "bg-bg-subtle border-line opacity-50"
+                    ? "border-amber-400/30 shadow-[0_0_16px_rgba(251,191,36,0.1)]"
+                    : "opacity-50"
                 }`}
               >
                 <p className={`font-semibold ${a.unlocked ? "text-amber-400" : "text-fg-dim"}`}>

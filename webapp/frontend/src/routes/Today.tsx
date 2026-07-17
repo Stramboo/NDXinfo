@@ -187,9 +187,26 @@ export function Today() {
                   <span className="glass-pill text-[10px] px-2 py-0.5 rounded-full text-amber-300">
                     +{challenge.xp} XP
                   </span>
+                  {challenge.completed && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                      ✓ 已达成
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm font-semibold text-fg mt-1">{challenge.title}</p>
                 <p className="text-xs text-fg-muted mt-0.5">{challenge.description}</p>
+                {/* 真实进度条 */}
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-400 transition-all duration-500"
+                      style={{ width: `${Math.min(100, (challenge.progress / challenge.target) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-fg-dim tabular">
+                    {challenge.progress}/{challenge.target}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

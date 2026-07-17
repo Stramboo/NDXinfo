@@ -71,6 +71,11 @@ from webapp.backend.coach_chat import chat as coach_chat  # noqa: E402
 from webapp.backend.daily_challenge import get_daily_challenge, CHALLENGE_POOL  # noqa: E402
 from webapp.backend.xp_service import award_xp, get_level_info  # noqa: E402
 from webapp.backend.review_service import auto_review_on_sell  # noqa: E402
+from webapp.backend.growth_service import (  # noqa: E402
+    collect_today_activity, daily_checkin as do_daily_checkin,
+    evaluate_achievements, get_achievements_with_status,
+)
+from webapp.backend.daily_challenge import check_challenge_completion  # noqa: E402
 
 # v2.4 Phase 2: 复盘自动触发（纯本地规则引擎，默认开）
 ENABLE_REVIEW_AUTO = os.environ.get("ENABLE_REVIEW_AUTO", "true").lower() == "true"
@@ -718,7 +723,15 @@ def mark_learning_progress(req: dict) -> dict:
     if not chapter_id:
         raise HTTPException(400, "chapter_id required")
     state.userstore.update_streak()
-    return state.userstore.learning_progress_mark(chapter_id)
+    result = state.userstore.learning_progress_mark(chapter_id)
+    # 学习行为计数 + 成就评估
+    try:
+        import datetime as _dt
+        state.userstore.checkin_touch(_dt.date.today().isoformat(), "lessons_done", 1)
+        evaluate_achievements(state.userstore)
+    except Exception:
+        pass
+    return result
 
 
 # ---- 学习任务（Quests）----
@@ -1035,10 +1048,21 @@ def coach_chat_api(req: ChatReq) -> dict:
 
 @app.get("/api/challenges/daily")
 def get_daily_challenge_api() -> dict:
-    """获取今日挑战"""
-    # TODO: 从用户数据计算等级
-    user_level = 1
-    challenge = get_daily_challenge(user_level)
+    """获取今日挑战（含真实进度）"""
+    stats = state.userstore.get_learning_stats()
+    level_info = get_level_info(stats.get("total_xp", 0))
+    challenge = get_daily_challenge(level_info["level"])
+
+    # 映射当日真实进度
+    activity = collect_today_activity(state.userstore)
+    progress_map = {
+        "learning": activity["lessons_completed_today"],
+        "practice": activity["trades_today"],
+        "explore": activity["markets_viewed_today"],
+        "review": activity["reviews_written_today"],
+    }
+    challenge["progress"] = progress_map.get(challenge["type"], 0)
+    challenge["completed"] = challenge["progress"] >= challenge["target"]
     return challenge
 
 
@@ -1050,10 +1074,74 @@ def get_challenge_pool() -> list[dict]:
 
 @app.post("/api/challenges/complete")
 def complete_challenge(req: dict) -> dict:
-    """标记挑战完成"""
+    """标记挑战完成（真实验证 + 幂等 XP）"""
     challenge_id = req.get("challenge_id", "")
-    # TODO: 验证挑战完成条件 + 发放 XP
-    return {"ok": True, "challenge_id": challenge_id, "xp_earned": 30}
+    if not challenge_id:
+        raise HTTPException(400, "challenge_id required")
+
+    activity = collect_today_activity(state.userstore)
+    completed = check_challenge_completion(challenge_id, activity)
+    if not completed:
+        return {"ok": False, "completed": False, "xp_earned": 0,
+                "message": "挑战目标尚未达成"}
+
+    # 幂等发放（日期后缀）
+    import datetime as _dt
+    today = _dt.date.today().isoformat()
+    challenge = next((c for c in CHALLENGE_POOL if c["id"] == challenge_id), None)
+    xp = challenge.get("xp", 30) if challenge else 30
+    result = award_xp(state.userstore, "challenge", f"{challenge_id}:{today}", xp)
+
+    return {"ok": True, "completed": True, "xp_earned": result["amount"],
+            "already_claimed": not result["awarded"]}
+
+
+# ---- 每日签到 + 成就 API (v2.4 Phase 3) ----
+
+@app.post("/api/checkin")
+def post_checkin() -> dict:
+    """每日签到（App 启动时调用，幂等）"""
+    result = do_daily_checkin(state.userstore)
+    # 签到后评估成就
+    try:
+        newly = evaluate_achievements(state.userstore)
+        result["newly_unlocked"] = newly
+    except Exception:
+        result["newly_unlocked"] = []
+    return result
+
+
+@app.get("/api/achievements")
+def list_achievements() -> list[dict]:
+    """获取全部成就及解锁状态"""
+    return get_achievements_with_status(state.userstore)
+
+
+@app.post("/api/achievements/evaluate")
+def trigger_achievements() -> dict:
+    """手动触发成就评估（交易/学习后调用）"""
+    newly = evaluate_achievements(state.userstore)
+    return {"newly_unlocked": newly}
+
+
+@app.post("/api/activity/track")
+def track_activity(req: dict) -> dict:
+    """轻量行为打点（探索/学习等）"""
+    import datetime as _dt
+    atype = req.get("type", "")
+    field_map = {
+        "explore": "explores_done",
+        "lesson": "lessons_done",
+        "trade": "trades_done",
+        "review": "reviews_done",
+    }
+    field = field_map.get(atype)
+    if field:
+        try:
+            state.userstore.checkin_touch(_dt.date.today().isoformat(), field, 1)
+        except Exception:
+            pass
+    return {"ok": True}
 
 
 # ---- 沙盒交易 API ----
@@ -1096,6 +1184,12 @@ def post_sandbox_order(req: SandboxOrderReq) -> dict:
             )
         except Exception as e:
             logger.warning(f"复盘自动生成失败: {e}")
+
+    # v2.4: 交易后成就评估
+    try:
+        evaluate_achievements(state.userstore)
+    except Exception:
+        pass
 
     return {"order_id": oid, "status": "filled", "ts": ts, "review": review}
 

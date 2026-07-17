@@ -1,4 +1,5 @@
 import { Route, Routes, Navigate, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { useWS } from "./lib/ws";
@@ -46,6 +47,12 @@ function OnboardingRedirect() {
 function AppContent() {
   useWS();
   useBootstrapData();
+
+  // v2.4: App 启动每日签到（幂等）
+  useEffect(() => {
+    fetch("/api/checkin", { method: "POST" }).catch(() => {});
+  }, []);
+
   return (
     <div className="relative flex h-screen w-screen overflow-hidden bg-bg text-fg">
       {/* Liquid Glass 氛围光背景 */}
