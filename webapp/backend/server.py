@@ -76,6 +76,10 @@ from webapp.backend.growth_service import (  # noqa: E402
     evaluate_achievements, get_achievements_with_status,
 )
 from webapp.backend.daily_challenge import check_challenge_completion  # noqa: E402
+from webapp.backend.quiz_content import (  # noqa: E402
+    get_lesson_quiz, grade_lesson_quiz,
+    get_stage_exam, grade_stage_exam, STAGE_EXAMS,
+)
 
 # v2.4 Phase 2: 复盘自动触发（纯本地规则引擎，默认开）
 ENABLE_REVIEW_AUTO = os.environ.get("ENABLE_REVIEW_AUTO", "true").lower() == "true"
@@ -1218,6 +1222,114 @@ def get_review_stats() -> dict:
         "mistake_freq": mistake_freq,
         "score_trend": trend,
     }
+
+
+# ---- 课时测验 + 阶段考试 API (v2.4 Phase 5) ----
+
+@app.get("/api/learning/quiz/{chapter_id}")
+def get_quiz(chapter_id: str) -> dict:
+    """获取课时测验题目（不含答案）"""
+    quiz = get_lesson_quiz(chapter_id)
+    if not quiz:
+        raise HTTPException(404, "该课程没有测验")
+    return {"chapter_id": chapter_id, "questions": quiz}
+
+
+@app.post("/api/learning/quiz/{chapter_id}/submit")
+def submit_quiz(chapter_id: str, req: dict) -> dict:
+    """提交课时测验，判分并发 XP（取历史最佳防刷）"""
+    answers = req.get("answers", [])
+    result = grade_lesson_quiz(chapter_id, answers)
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+
+    # 保存成绩
+    state.userstore.quiz_result_save(
+        chapter_id, "lesson_quiz", result["score"],
+        result["correct_count"], result["total_questions"], result["passed"],
+    )
+
+    # XP：每题 10 分，只补发超过历史最佳的部分
+    best = state.userstore.quiz_result_best(chapter_id)
+    earned_xp = 0
+    if result["passed"]:
+        new_xp = result["correct_count"] * 10
+        # 用 score 维度幂等：同分数段不重复发
+        xp_result = award_xp(state.userstore, "quiz", f"{chapter_id}:{result['correct_count']}", new_xp)
+        earned_xp = xp_result["amount"]
+
+    return {**result, "xp_earned": earned_xp}
+
+
+@app.get("/api/learning/exams/{stage_id}")
+def get_exam(stage_id: str) -> dict:
+    """获取阶段考试题目（不含答案）"""
+    exam = get_stage_exam(stage_id)
+    if "error" in exam:
+        raise HTTPException(404, exam["error"])
+    # 检查前置条件：该阶段课程全部完成
+    progress = state.userstore.learning_progress_list()
+    completed_ids = {p["chapter_id"] for p in progress if p.get("completed")}
+    stage_chapters = [cid for cid, l in LESSONS.items() if l.get("category") and _stage_of(l) == stage_id]
+    exam["chapters_required"] = len(stage_chapters)
+    exam["chapters_completed"] = len([c for c in stage_chapters if c in completed_ids])
+    exam["unlocked"] = exam["chapters_completed"] >= exam["chapters_required"] if stage_chapters else True
+    # 历史最佳成绩
+    best = state.userstore.quiz_result_best(stage_id)
+    exam["best_score"] = best["score"] if best else None
+    exam["already_passed"] = best["passed"] if best else False
+    return exam
+
+
+def _stage_of(lesson: dict) -> str:
+    """从课程 category 推断 stage_id"""
+    cat = lesson.get("category", "")
+    stage_map = {
+        "股票是什么": "stage1", "认识全球股票市场": "stage2",
+        "如何认识一家公司": "stage3", "理解股价和图表": "stage4",
+        "建立风险意识": "stage5", "模拟交易与复盘": "stage6",
+    }
+    return stage_map.get(cat, "")
+
+
+@app.post("/api/learning/exams/{stage_id}/submit")
+def submit_exam(stage_id: str, req: dict) -> dict:
+    """提交阶段考试，通过则发 200 XP + 记录证书"""
+    answers = req.get("answers", [])
+    result = grade_stage_exam(stage_id, answers)
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+
+    state.userstore.quiz_result_save(
+        stage_id, "stage_exam", result["score"],
+        result["correct_count"], result["total_questions"], result["passed"],
+    )
+
+    earned_xp = 0
+    if result["passed"]:
+        xp_result = award_xp(state.userstore, "exam", stage_id, 200)
+        earned_xp = xp_result["amount"]
+        try:
+            evaluate_achievements(state.userstore)
+        except Exception:
+            pass
+
+    return {**result, "xp_earned": earned_xp}
+
+
+@app.get("/api/learning/certificates")
+def list_certificates() -> list[dict]:
+    """获取已获得的结业证书"""
+    passed = state.userstore.quiz_results_passed("stage_exam")
+    return [
+        {
+            "stage_id": p["quiz_id"],
+            "title": STAGE_EXAMS.get(p["quiz_id"], {}).get("title", p["quiz_id"]),
+            "score": p["score"],
+            "passed_at": p["passed_at"],
+        }
+        for p in passed
+    ]
 
 
 # ---- 沙盒交易 API ----

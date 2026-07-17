@@ -11,6 +11,7 @@ import { ArrowLeft, Check, Lightbulb, AlertTriangle, BookOpen } from "lucide-rea
 import { KLineChart } from "../features/KLineChart";
 import { SandboxTradePanel } from "../features/SandboxTradePanel";
 import { QuestCard, type QuestData } from "../features/QuestCard";
+import { QuizRunner } from "../features/QuizRunner";
 
 type Section = { heading: string; paragraphs: string[] };
 type Interactive = { type: string; instructions?: string; question?: string;
@@ -34,6 +35,8 @@ export function LearningChapter() {
   const [quests, setQuests] = useState<QuestData[]>([]);
   const [quizSelected, setQuizSelected] = useState<number | null>(null);
   const [quizResult, setQuizResult] = useState<"correct" | "wrong" | null>(null);
+  const [lessonQuiz, setLessonQuiz] = useState<{ question: string; options: string[] }[] | null>(null);
+  const [showQuiz, setShowQuiz] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,6 +65,15 @@ export function LearningChapter() {
       .then((d) => { if (d?.quests) setQuests(d.quests); })
       .catch(() => {});
   }, [chapterId, markedDone]);
+
+  // v2.4: 加载课时测验
+  useEffect(() => {
+    if (!chapterId) return;
+    fetch(`/api/learning/quiz/${chapterId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.questions?.length) setLessonQuiz(d.questions); })
+      .catch(() => {});
+  }, [chapterId]);
 
   // Scroll-completion
   useEffect(() => {
@@ -319,6 +331,34 @@ export function LearningChapter() {
             </div>
           )}
         </div>
+
+        {/* 课时测验 (v2.4) */}
+        {lessonQuiz && lessonQuiz.length > 0 && (
+          <div className="mt-6 glass-card p-5">
+            {!showQuiz ? (
+              <button
+                onClick={() => setShowQuiz(true)}
+                className="w-full flex items-center justify-between group"
+              >
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-fg">📝 课时测验</p>
+                  <p className="text-xs text-fg-dim mt-0.5">{lessonQuiz.length} 道题 · 每题 10 XP</p>
+                </div>
+                <span className="glass-btn-primary px-4 py-2 rounded-[10px] text-xs font-semibold">
+                  开始测验
+                </span>
+              </button>
+            ) : (
+              <QuizRunner
+                title={lesson?.title || "课时测验"}
+                questions={lessonQuiz}
+                submitUrl={`/api/learning/quiz/${chapterId}/submit`}
+                passScore={60}
+                onClose={() => setShowQuiz(false)}
+              />
+            )}
+          </div>
+        )}
 
         {/* 任务列表 */}
         {quests.length > 0 && (

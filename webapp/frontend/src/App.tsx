@@ -12,6 +12,7 @@ import { GuidedPractice } from "./routes/GuidedPractice";
 import { ScenarioTraining } from "./routes/ScenarioTraining";
 import { FreePractice } from "./routes/FreePractice";
 import { ReviewCenter } from "./routes/ReviewCenter";
+import { StageExam } from "./routes/StageExam";
 import { Me } from "./routes/Me";
 // 旧路由 — 保留兼容
 import { Trading } from "./routes/Trading";
@@ -78,6 +79,7 @@ function AppContent() {
             {/* 学习路径（保留） */}
             <Route path="/learning" element={<Learning />} />
             <Route path="/learning/:chapterId" element={<LearningChapter />} />
+            <Route path="/learning/exam/:stageId" element={<StageExam />} />
             <Route path="/learning/dashboard" element={<LearningDashboard />} />
             <Route path="/glossary" element={<Glossary />} />
 
