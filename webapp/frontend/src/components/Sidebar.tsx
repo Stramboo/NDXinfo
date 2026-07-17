@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import {
   Compass, GraduationCap, Globe, Gamepad2, User, Activity,
+  BookOpen, Sparkles, Settings,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -58,34 +59,34 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* 底部：旧入口（默认收起） */}
-      <details className="px-3 pb-2 group">
-        <summary className="text-[10px] uppercase tracking-wider text-fg-dim cursor-pointer
-                            pl-3 py-1 hover:text-fg-muted transition select-none">
-          更多工具 ▾
-        </summary>
-        <div className="mt-1 space-y-0.5">
+      {/* 底部：更多工具（默认展开） */}
+      <div className="px-3 pb-4 pt-2 border-t border-line">
+        <p className="text-[11px] uppercase tracking-wider text-fg-dim px-3 py-2">
+          更多工具
+        </p>
+        <div className="space-y-0.5">
           {[
-            { to: "/glossary",   label: "术语表" },
-            { to: "/advisor",    label: "AI推荐" },
-            { to: "/settings",   label: "设置" },
-          ].map(({ to, label }) => (
+            { to: "/glossary",   label: "术语表",  icon: BookOpen },
+            { to: "/advisor",    label: "AI 推荐", icon: Sparkles },
+            { to: "/settings",   label: "设置",    icon: Settings },
+          ].map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-3 pl-6 pr-3 py-1.5 rounded text-xs transition",
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition",
                   "hover:bg-bg-hover",
-                  isActive ? "text-fg" : "text-fg-dim"
+                  isActive ? "text-fg bg-bg-hover" : "text-fg-muted"
                 )
               }
             >
+              <Icon className="h-4 w-4" />
               <span>{label}</span>
             </NavLink>
           ))}
         </div>
-      </details>
+      </div>
     </aside>
   );
 }

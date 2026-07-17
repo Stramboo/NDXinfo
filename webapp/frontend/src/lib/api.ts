@@ -138,7 +138,7 @@ export type FullAnalysisData = {
 // ---------- 接口 ----------
 
 export const api = {
-  health:        ()                 => http<{status:string; backend:string; uptime_s:number}>(`/api/health`),
+  health:        ()                 => http<{status:string; backend:string; uptime_s:number; real_data?:boolean}>(`/api/health`),
   account:       ()                 => http<Account>(`/api/account`),
   positions:     ()                 => http<Position[]>(`/api/positions`),
   orders:        (limit = 50)       => http<Order[]>(`/api/orders?limit=${limit}`),

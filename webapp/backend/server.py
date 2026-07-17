@@ -68,6 +68,21 @@ from webapp.backend.explorer import MARKETS, COMPANIES, INDUSTRIES, get_market_s
 from webapp.backend.practice import calc_position, calc_stop_loss, SCENARIOS, evaluate_scenario_decisions  # noqa: E402
 from webapp.backend.ai_coach import TradeCoach, enhance_with_llm  # noqa: E402
 
+# v2.3 Phase 1: 真实数据 Provider（可选）
+ENABLE_REAL_DATA = os.environ.get("ENABLE_REAL_DATA", "false").lower() == "true"
+if ENABLE_REAL_DATA:
+    try:
+        from webapp.backend.adapters.real_data_provider import get_quote, get_ohlc as get_real_ohlc
+        logger.info("ENABLE_REAL_DATA=true, 真实数据 Provider 已加载")
+    except ImportError as e:
+        logger.warning(f"ENABLE_REAL_DATA=true 但 real_data_provider 加载失败: {e}")
+        ENABLE_REAL_DATA = False
+        get_quote = None
+        get_real_ohlc = None
+else:
+    get_quote = None
+    get_real_ohlc = None
+
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
 logger = logging.getLogger("webapp.backend")
@@ -244,6 +259,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "backend": state.backend_kind,
+        "real_data": ENABLE_REAL_DATA,
         "ts": int(time.time() * 1000),
         "uptime_s": int(time.time() - st),
     }
@@ -316,15 +332,37 @@ def get_market_batch(symbols: str = "") -> dict:
 @app.get("/api/market/{symbol}")
 def get_market_quote(symbol: str) -> dict:
     sym = symbol.upper()
+    
+    # v2.3: 真实数据模式
+    if ENABLE_REAL_DATA and get_quote:
+        real_quote = get_quote(sym)
+        if real_quote:
+            return real_quote
+        # 降级到 Mock
+        logger.info(f"真实数据获取失败，降级到 Mock: {sym}")
+    
+    # Mock 模式
     if sym not in state.engine.prices:
         raise HTTPException(404, f"unknown symbol: {sym}")
     return {"symbol": sym, "price": state.engine.prices[sym],
-            "ts": int(time.time() * 1000)}
+            "ts": int(time.time() * 1000), "source": "mock"}
 
 
 @app.get("/api/market/{symbol}/ohlc")
 def get_ohlc(symbol: str, interval: str = "1m", limit: int = 200) -> list[dict]:
     sym = symbol.upper()
+    
+    # v2.3: 真实数据模式
+    if ENABLE_REAL_DATA and get_real_ohlc:
+        # 转换 interval 格式
+        period_map = {"1m": "1d", "5m": "5d", "15m": "1mo", "1h": "3mo", "1d": "6mo", "1wk": "1y"}
+        period = period_map.get(interval, "6mo")
+        real_data = get_real_ohlc(sym, period=period, interval="1d")
+        if real_data:
+            return real_data[-limit:] if len(real_data) > limit else real_data
+        logger.info(f"真实K线获取失败，降级到 Mock: {sym}")
+    
+    # Mock 模式
     if sym not in state.engine.prices:
         raise HTTPException(404, f"unknown symbol: {sym}")
     return state.engine.ohlc(sym, interval=interval, limit=limit)
