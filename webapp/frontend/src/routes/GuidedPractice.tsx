@@ -92,7 +92,7 @@ export function GuidedPractice() {
             你选择了 {selected?.name}，以约 ${10 * 150} 的金额买入 10 股。
           </p>
         </div>
-        <div className="p-4 rounded-xl bg-bg-panel border border-line text-xs text-fg-muted text-left space-y-2">
+        <div className="p-4 glass-card text-xs text-fg-muted text-left space-y-2">
           <p>📋 你的交易计划：</p>
           <p>· 理由：{reason}</p>
           <p>· 仓位：不超过 {positionPct}%</p>
@@ -109,7 +109,7 @@ export function GuidedPractice() {
           </Link>
           <Link
             to="/me"
-            className="px-6 py-2.5 rounded-xl bg-bg-panel border border-line
+            className="px-6 py-2.5 glass-card
                        text-fg font-medium text-sm hover:bg-bg-hover transition"
           >
             查看成长
@@ -149,7 +149,7 @@ export function GuidedPractice() {
             <button
               key={c.symbol}
               onClick={() => handleSelect(c)}
-              className="w-full text-left rounded-xl bg-bg-panel border border-line p-4
+              className="w-full text-left glass-card p-4
                          hover:border-emerald-500/30 transition"
             >
               <p className="text-sm font-semibold text-fg">{c.name} ({c.symbol})</p>
@@ -163,7 +163,7 @@ export function GuidedPractice() {
       {/* Step 1: 了解公司 */}
       {step === 1 && selected && (
         <div className="space-y-4">
-          <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-3">
+          <div className="glass-card p-5 space-y-3">
             <p className="text-sm font-semibold text-fg">{selected.name} ({selected.symbol})</p>
             <p className="text-xs text-fg-muted leading-relaxed">{selected.desc}</p>
             <div className="flex gap-2 text-xs">
@@ -239,7 +239,7 @@ export function GuidedPractice() {
       {/* Step 4: 确认下单 */}
       {step === 4 && (
         <div className="space-y-4">
-          <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-2 text-sm">
+          <div className="glass-card p-5 space-y-2 text-sm">
             <p className="font-semibold text-fg">确认你的交易：</p>
             <div className="text-fg-muted text-xs space-y-1">
               <p>公司：{selected?.name} ({selected?.symbol})</p>

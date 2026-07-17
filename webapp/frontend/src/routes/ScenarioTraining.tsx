@@ -155,7 +155,7 @@ export function ScenarioTraining() {
           </div>
         </div>
 
-        <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-2">
+        <div className="glass-card p-5 space-y-2">
           <p className="text-xs text-fg-muted uppercase tracking-wider">关键收获</p>
           <p className="text-sm text-fg leading-relaxed">{evalResult.takeaway}</p>
           {evalResult.feedback.length > 0 && !evalResult.feedback.includes("做得很好！") && (
@@ -171,7 +171,7 @@ export function ScenarioTraining() {
         <div className="flex gap-3 justify-center">
           <Link
             to="/practice"
-            className="px-4 py-2 rounded-lg bg-bg-subtle text-sm text-fg hover:bg-bg-panel transition"
+            className="px-4 py-2 glass-light rounded-[12px] text-sm text-fg hover:bg-bg-panel transition"
           >
             返回练习
           </Link>
@@ -234,7 +234,7 @@ export function ScenarioTraining() {
 
       {/* 决策卡片 */}
       {currentStep && (
-        <div className="rounded-xl bg-bg-panel border border-line p-6 space-y-4">
+        <div className="glass-card p-6 space-y-4">
           <p className="text-sm font-medium text-fg leading-relaxed">
             {currentStep.question}
           </p>

@@ -84,7 +84,7 @@ export function CoachChat({ onClose }: { onClose?: () => void }) {
   };
 
   return (
-    <div className="flex flex-col h-full max-h-[600px] rounded-xl bg-bg-panel border border-line overflow-hidden">
+    <div className="flex flex-col h-full max-h-[600px] glass-card overflow-hidden">
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-bg-subtle">
         <div className="flex items-center gap-2">
@@ -176,7 +176,7 @@ export function CoachChat({ onClose }: { onClose?: () => void }) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
             placeholder="输入你的问题..."
-            className="flex-1 h-10 px-4 rounded-lg bg-bg-subtle text-sm text-fg placeholder:text-fg-dim focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+            className="flex-1 h-10 px-4 glass-light rounded-[12px] text-sm text-fg placeholder:text-fg-dim focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
           />
           <button
             onClick={() => handleSend()}

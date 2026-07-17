@@ -122,7 +122,7 @@ export function MarketDetail() {
           { label: "北京时间", value: `${data.localTimes.open} - ${data.localTimes.close}` },
           { label: "上市公司", value: `${data.companyCount}+ 家` },
         ].map((item) => (
-          <div key={item.label} className="rounded-xl bg-bg-panel border border-line p-3">
+          <div key={item.label} className="glass-card p-3">
             <p className="text-[10px] text-fg-muted uppercase tracking-wider">{item.label}</p>
             <p className="text-sm font-semibold text-fg mt-1">{item.value}</p>
           </div>
@@ -130,11 +130,11 @@ export function MarketDetail() {
       </div>
 
       {/* 代表指数 */}
-      <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-3">
+      <div className="glass-card p-5 space-y-3">
         <p className="text-xs text-fg-muted uppercase tracking-wider">代表指数</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {data.indices.map((ix) => (
-            <div key={ix.symbol} className="rounded-lg bg-bg-subtle p-3">
+            <div key={ix.symbol} className="glass-light rounded-[12px] p-3">
               <p className="text-sm font-semibold text-fg">{ix.name}</p>
               <p className="text-[10px] text-fg-dim mt-0.5">{ix.description}</p>
               <p className="text-[10px] text-fg-muted mt-1 font-mono">{ix.symbol}</p>
@@ -144,7 +144,7 @@ export function MarketDetail() {
       </div>
 
       {/* 市场特点 */}
-      <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-2">
+      <div className="glass-card p-5 space-y-2">
         <p className="text-xs text-fg-muted uppercase tracking-wider">市场特点</p>
         <ul className="space-y-1.5">
           {data.features.map((f, i) => (
@@ -168,7 +168,7 @@ export function MarketDetail() {
               {companies.map((c) => (
                 <div
                   key={c.symbol}
-                  className="flex items-start gap-3 rounded-lg bg-bg-panel border border-line p-3
+                  className="flex items-start gap-3 glass-light rounded-[14px] p-3
                              hover:border-emerald-500/20 transition"
                 >
                   <span

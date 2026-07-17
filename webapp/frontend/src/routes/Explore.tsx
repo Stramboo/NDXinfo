@@ -69,12 +69,12 @@ export function Explore() {
       </div>
 
       {/* 动态时间轴 */}
-      <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-3">
+      <div className="glass-card p-5 space-y-3">
         <p className="text-xs text-fg-muted uppercase tracking-wider">全球交易时段</p>
         {loading ? (
           <div className="flex gap-2">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-8 w-24 rounded-lg bg-bg-subtle animate-pulse" />
+              <div key={i} className="h-8 w-24 glass-light rounded-[12px] animate-pulse" />
             ))}
           </div>
         ) : (
@@ -118,7 +118,7 @@ export function Explore() {
                   <Link
                     key={m.id}
                     to={`/explore/markets/${m.id}`}
-                    className="block rounded-xl bg-bg-panel border border-line p-4
+                    className="block glass-card p-4
                                hover:border-emerald-500/30 hover:bg-bg-subtle transition-all group"
                   >
                     <div className="flex items-start justify-between mb-2">

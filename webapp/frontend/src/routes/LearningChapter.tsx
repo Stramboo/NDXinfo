@@ -127,7 +127,7 @@ export function LearningChapter() {
         {/* 2. 生活类比 */}
         <div className="mb-8">
           <p className="text-xs text-fg-muted uppercase tracking-wider mb-2">生活类比</p>
-          <div className="p-4 rounded-lg bg-bg-subtle border border-line text-sm text-fg-muted leading-relaxed">
+          <div className="p-4 glass-light rounded-[12px] border border-line text-sm text-fg-muted leading-relaxed">
             {lesson.analogy}
           </div>
         </div>
@@ -165,7 +165,7 @@ export function LearningChapter() {
         )}
 
         {/* 6. 课后总结 */}
-        <div className="mb-8 p-4 rounded-lg bg-bg-subtle border border-line">
+        <div className="mb-8 p-4 glass-light rounded-[12px] border border-line">
           <p className="text-xs text-fg-dim uppercase tracking-wider mb-1">
             <BookOpen className="w-3 h-3 inline mr-1" /> 总结
           </p>

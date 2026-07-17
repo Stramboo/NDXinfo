@@ -176,11 +176,11 @@ export function Learning() {
       {/* 底部快捷入口 */}
       <div className="flex gap-3">
         <Link to="/learning/dashboard"
-          className="text-xs text-fg-dim hover:text-fg transition px-3 py-2 rounded-lg bg-bg-subtle border border-line">
+          className="text-xs text-fg-dim hover:text-fg transition px-3 py-2 glass-light rounded-[12px] border border-line">
           📊 学习进度 →
         </Link>
         <Link to="/glossary"
-          className="text-xs text-fg-dim hover:text-fg transition px-3 py-2 rounded-lg bg-bg-subtle border border-line">
+          className="text-xs text-fg-dim hover:text-fg transition px-3 py-2 glass-light rounded-[12px] border border-line">
           📖 术语表 →
         </Link>
       </div>

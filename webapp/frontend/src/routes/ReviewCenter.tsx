@@ -91,17 +91,17 @@ export function ReviewCenter() {
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-xl bg-bg-panel border border-line p-4 text-center">
+        <div className="glass-card p-4 text-center">
           <p className="text-2xl font-bold text-fg">{reviews.length}</p>
           <p className="text-xs text-fg-dim mt-1">复盘交易数</p>
         </div>
-        <div className="rounded-xl bg-bg-panel border border-line p-4 text-center">
+        <div className="glass-card p-4 text-center">
           <p className="text-2xl font-bold text-emerald-400">
             {reviews.filter((r) => r.pnl > 0).length}
           </p>
           <p className="text-xs text-fg-dim mt-1">盈利交易</p>
         </div>
-        <div className="rounded-xl bg-bg-panel border border-line p-4 text-center">
+        <div className="glass-card p-4 text-center">
           <p className="text-2xl font-bold text-rose-400">
             {reviews.filter((r) => r.pnl < 0).length}
           </p>
@@ -111,7 +111,7 @@ export function ReviewCenter() {
 
       {/* 错误模式统计 */}
       {Object.keys(mistakeStats).length > 0 && (
-        <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-3">
+        <div className="glass-card p-5 space-y-3">
           <p className="text-xs text-fg-muted uppercase tracking-wider">常见错误模式</p>
           <div className="space-y-2">
             {Object.entries(mistakeStats)
@@ -136,7 +136,7 @@ export function ReviewCenter() {
       <div className="space-y-3">
         <p className="text-xs text-fg-muted uppercase tracking-wider">复盘记录</p>
         {reviews.length === 0 ? (
-          <div className="rounded-xl bg-bg-panel border border-line p-8 text-center">
+          <div className="glass-card p-8 text-center">
             <p className="text-sm text-fg-dim">暂无复盘记录</p>
             <p className="text-xs text-fg-muted mt-2">
               完成一笔沙盒交易后，系统会自动生成复盘报告
@@ -154,7 +154,7 @@ export function ReviewCenter() {
               <button
                 key={r.trade_id}
                 onClick={() => setSelectedReview(selectedReview?.trade_id === r.trade_id ? null : r)}
-                className="w-full text-left rounded-xl bg-bg-panel border border-line p-4 hover:border-emerald-500/30 transition"
+                className="w-full text-left glass-card p-4 hover:border-emerald-500/30 transition"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">

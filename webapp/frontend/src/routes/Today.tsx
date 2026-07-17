@@ -117,15 +117,16 @@ export function Today() {
       </div>
 
       {/* 主任务卡片 */}
-      <div className="rounded-xl bg-bg-panel border border-line p-6 space-y-4
-                      shadow-sm">
+      <div className="glass-card specular-edge p-6 space-y-4">
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+          <div className="w-11 h-11 rounded-[14px] bg-gradient-to-br from-emerald-400/20 to-emerald-600/10
+                          border border-emerald-400/20 flex items-center justify-center shrink-0
+                          shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
             <GraduationCap className="w-5 h-5 text-emerald-400" />
           </div>
           <div className="space-y-1 flex-1">
             <p className="text-xs text-fg-muted uppercase tracking-wider">今日主任务</p>
-            <p className="text-lg font-semibold text-fg">
+            <p className="text-lg font-semibold text-fg tracking-tight">
               {isNew && "第1课：认识公司与股份"}
               {isInProgress && `继续：${state?.currentLessonTitle || state?.currentChapterTitle}`}
               {isDone && "探索全球股票市场"}
@@ -141,8 +142,8 @@ export function Today() {
         {/* 唯一主按钮 */}
         <Link
           to={isDone ? "/explore" : `/learning/${state?.currentChapterId || "ch01"}`}
-          className="block w-full text-center py-3 rounded-xl bg-emerald-500
-                     text-bg font-bold text-sm hover:bg-emerald-400 transition"
+          className="glass-btn-primary block w-full text-center py-3 rounded-[14px]
+                     font-bold text-sm"
         >
           {isNew && "开始第一课"}
           {isInProgress && "继续学习"}
@@ -152,14 +153,15 @@ export function Today() {
 
       {/* 学习进度小条 */}
       {state && state.chapterTotal > 0 && (
-        <div className="space-y-1.5">
+        <div className="glass-pill rounded-[16px] px-4 py-3 space-y-2">
           <div className="flex justify-between text-xs text-fg-muted">
             <span>学习进度</span>
             <span className="tabular">{state.chapterDone}/{state.chapterTotal} 章 · 连续 {state.streak} 天</span>
           </div>
-          <div className="h-1.5 rounded-full bg-bg-subtle overflow-hidden">
+          <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
             <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-700"
+              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500
+                         shadow-[0_0_8px_rgba(52,211,153,0.5)] transition-all duration-700"
               style={{ width: `${Math.round((state.chapterDone / state.chapterTotal) * 100)}%` }}
             />
           </div>
@@ -168,41 +170,43 @@ export function Today() {
 
       {/* 今日挑战 */}
       {challenge && (
-        <div className="rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center shrink-0">
-              <Target className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-xs text-amber-400 font-medium">今日挑战</p>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
-                  +{challenge.xp} XP
-                </span>
+        <div className="glass-card overflow-hidden">
+          <div className="bg-gradient-to-r from-amber-500/15 to-orange-500/10 p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-[12px] bg-amber-500/20 border border-amber-400/20
+                              flex items-center justify-center shrink-0
+                              shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+                <Target className="w-4 h-4 text-amber-400" />
               </div>
-              <p className="text-sm font-semibold text-fg mt-1">{challenge.title}</p>
-              <p className="text-xs text-fg-muted mt-0.5">{challenge.description}</p>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-amber-400 font-medium">今日挑战</p>
+                  <span className="glass-pill text-[10px] px-2 py-0.5 rounded-full text-amber-300">
+                    +{challenge.xp} XP
+                  </span>
+                </div>
+                <p className="text-sm font-semibold text-fg mt-1">{challenge.title}</p>
+                <p className="text-xs text-fg-muted mt-0.5">{challenge.description}</p>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* 可选探索任务 */}
-      <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-3">
+      <div className="glass-card p-5 space-y-3">
         <p className="text-xs text-fg-muted uppercase tracking-wider">可选探索</p>
         <div className="grid grid-cols-2 gap-3">
           <Link
             to="/explore"
-            className="flex items-center gap-2 p-3 rounded-lg bg-bg-subtle hover:bg-bg-hover
-                       transition text-sm text-fg-muted hover:text-fg"
+            className="glass-btn flex items-center gap-2 p-3 rounded-[14px] text-sm text-fg-muted hover:text-fg"
           >
             <Globe className="w-4 h-4 shrink-0" />
             <span>浏览全球市场</span>
           </Link>
           <Link
             to="/practice"
-            className="flex items-center gap-2 p-3 rounded-lg bg-bg-subtle hover:bg-bg-hover
-                       transition text-sm text-fg-muted hover:text-fg"
+            className="glass-btn flex items-center gap-2 p-3 rounded-[14px] text-sm text-fg-muted hover:text-fg"
           >
             <Gamepad2 className="w-4 h-4 shrink-0" />
             <span>模拟练习</span>
@@ -211,24 +215,27 @@ export function Today() {
       </div>
 
       {/* 教练提示 */}
-      <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-blue-300 font-medium">💡 教练提示</p>
-          <button
-            onClick={() => setShowChat(!showChat)}
-            className="flex items-center gap-1 text-xs text-blue-300 hover:text-blue-200 transition"
-          >
-            <MessageCircle className="w-3 h-3" />
-            {showChat ? "收起" : "向教练提问"}
-          </button>
+      <div className="glass-card overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-500/12 to-indigo-500/8 p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-blue-300 font-medium">💡 教练提示</p>
+            <button
+              onClick={() => setShowChat(!showChat)}
+              className="glass-pill flex items-center gap-1.5 text-xs text-blue-300 hover:text-blue-200
+                         px-2.5 py-1 rounded-full transition"
+            >
+              <MessageCircle className="w-3 h-3" />
+              {showChat ? "收起" : "向教练提问"}
+            </button>
+          </div>
+          <p className="text-xs text-fg-muted leading-relaxed">
+            {isNew && "不用着急，慢慢来。每节课只有 5-10 分钟，学完一章再做练习。"}
+            {isInProgress && "记住：理解比速度重要。如果你有疑问，可以随时查看术语表。"}
+            {isDone && "你已经掌握基础知识了。试试模拟练习，把学到的用起来。"}
+          </p>
         </div>
-        <p className="text-xs text-fg-muted leading-relaxed">
-          {isNew && "不用着急，慢慢来。每节课只有 5-10 分钟，学完一章再做练习。"}
-          {isInProgress && "记住：理解比速度重要。如果你有疑问，可以随时查看术语表。"}
-          {isDone && "你已经掌握基础知识了。试试模拟练习，把学到的用起来。"}
-        </p>
         {showChat && (
-          <div className="mt-3 pt-3 border-t border-blue-500/20">
+          <div className="p-3 border-t border-white/[0.06]">
             <CoachChat onClose={() => setShowChat(false)} />
           </div>
         )}

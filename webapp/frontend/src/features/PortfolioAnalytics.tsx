@@ -53,7 +53,7 @@ export function PortfolioAnalytics({ positions, quotes, cash }: PortfolioAnalyti
 
   if (positions.length === 0) {
     return (
-      <div className="rounded-xl bg-bg-panel border border-line p-6 text-center">
+      <div className="glass-card p-6 text-center">
         <p className="text-sm text-fg-dim">暂无持仓数据</p>
         <p className="text-xs text-fg-muted mt-1">完成一笔交易后，这里会显示组合分析</p>
       </div>
@@ -63,7 +63,7 @@ export function PortfolioAnalytics({ positions, quotes, cash }: PortfolioAnalyti
   return (
     <div className="space-y-4">
       {/* 持仓分布 */}
-      <div className="rounded-xl bg-bg-panel border border-line p-4 space-y-3">
+      <div className="glass-card p-4 space-y-3">
         <p className="text-xs text-fg-muted uppercase tracking-wider">持仓分布</p>
         <div className="space-y-2">
           {analytics.positionData.map((p) => (
@@ -104,13 +104,13 @@ export function PortfolioAnalytics({ positions, quotes, cash }: PortfolioAnalyti
 
       {/* 盈亏统计 */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl bg-bg-panel border border-line p-4 text-center">
+        <div className="glass-card p-4 text-center">
           <p className="text-xs text-fg-muted">总盈亏</p>
           <p className={`text-lg font-bold ${analytics.totalPnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
             {analytics.totalPnl >= 0 ? "+" : ""}${analytics.totalPnl.toFixed(0)}
           </p>
         </div>
-        <div className="rounded-xl bg-bg-panel border border-line p-4 text-center">
+        <div className="glass-card p-4 text-center">
           <p className="text-xs text-fg-muted">持仓数量</p>
           <p className="text-lg font-bold text-fg">{positions.length}</p>
         </div>

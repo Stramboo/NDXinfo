@@ -72,7 +72,7 @@ export function Me() {
       </div>
 
       {/* 等级卡片 */}
-      <div className="rounded-xl bg-bg-panel border border-line p-6 space-y-4">
+      <div className="glass-card p-6 space-y-4">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center
                           text-2xl font-black text-emerald-400">
@@ -100,18 +100,18 @@ export function Me() {
 
       {/* 统计 */}
       <div className="grid grid-cols-3 gap-3">
-        <Link to="/learning" className="rounded-xl bg-bg-panel border border-line p-4
+        <Link to="/learning" className="glass-card p-4
                                         hover:border-emerald-500/30 transition text-center">
           <BookOpen className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
           <p className="text-lg font-bold text-fg tabular">{p.chapterDone}/{p.chapterTotal}</p>
           <p className="text-xs text-fg-muted">已学章节</p>
         </Link>
-        <div className="rounded-xl bg-bg-panel border border-line p-4 text-center">
+        <div className="glass-card p-4 text-center">
           <Award className="w-5 h-5 text-amber-400 mx-auto mb-1" />
           <p className="text-lg font-bold text-fg tabular">{p.questsCompleted}/{p.questsTotal}</p>
           <p className="text-xs text-fg-muted">任务完成</p>
         </div>
-        <Link to="/learning/dashboard" className="rounded-xl bg-bg-panel border border-line p-4
+        <Link to="/learning/dashboard" className="glass-card p-4
                                                hover:border-emerald-500/30 transition text-center">
           <TrendingUp className="w-5 h-5 text-blue-400 mx-auto mb-1" />
           <p className="text-lg font-bold text-fg tabular">{p.streak} 天</p>
@@ -147,14 +147,14 @@ export function Me() {
       <div className="space-y-3">
         <Link
           to="/learning/dashboard"
-          className="block rounded-xl bg-bg-panel border border-line p-4
+          className="block glass-card p-4
                      hover:border-emerald-500/30 transition text-sm text-fg"
         >
           📊 查看详细学习进度 →
         </Link>
         <Link
           to="/journal"
-          className="block rounded-xl bg-bg-panel border border-line p-4
+          className="block glass-card p-4
                      hover:border-emerald-500/30 transition text-sm text-fg"
         >
           📝 查看交易复盘记录 →

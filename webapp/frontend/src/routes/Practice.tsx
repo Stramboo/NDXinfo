@@ -83,7 +83,7 @@ export function Practice() {
                 <Link
                   key={s.id}
                   to={`/practice/scenario/${s.id}`}
-                  className="flex items-center gap-3 rounded-lg bg-bg-subtle p-3 hover:bg-amber-500/5 transition border border-line hover:border-amber-500/20"
+                  className="flex items-center gap-3 glass-light rounded-[12px] p-3 hover:bg-amber-500/5 transition border border-line hover:border-amber-500/20"
                 >
                   <span className="shrink-0 w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-[10px] font-bold text-amber-400">
                     {DIFFICULTY[s.difficulty] || "?"}

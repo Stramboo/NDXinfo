@@ -191,7 +191,7 @@ export function FreePractice() {
           </div>
 
           {/* 账户概览 */}
-          <div className="rounded-xl bg-bg-panel border border-line p-4 space-y-2">
+          <div className="glass-card p-4 space-y-2">
             <p className="text-xs text-fg-muted uppercase tracking-wider">账户概览</p>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
@@ -212,7 +212,7 @@ export function FreePractice() {
 
         {/* 中间：下单面板 */}
         <div className="space-y-4">
-          <div className="rounded-xl bg-bg-panel border border-line p-5 space-y-4">
+          <div className="glass-card p-5 space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-fg">{selectedSymbol}</p>
               <p className="text-lg font-bold text-fg">
@@ -221,7 +221,7 @@ export function FreePractice() {
             </div>
 
             {/* 买卖切换 */}
-            <div className="flex rounded-lg bg-bg-subtle p-1">
+            <div className="flex glass-light rounded-[12px] p-1">
               <button
                 onClick={() => setOrderType("BUY")}
                 className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
@@ -270,7 +270,7 @@ export function FreePractice() {
             </div>
 
             {/* 预估金额 */}
-            <div className="rounded-lg bg-bg-subtle p-3 space-y-1">
+            <div className="glass-light rounded-[12px] p-3 space-y-1">
               <div className="flex justify-between text-xs">
                 <span className="text-fg-muted">预估金额</span>
                 <span className="text-fg font-medium">
@@ -307,7 +307,7 @@ export function FreePractice() {
 
           {/* 当前持仓 */}
           {currentPosition && (
-            <div className="rounded-xl bg-bg-panel border border-line p-4">
+            <div className="glass-card p-4">
               <p className="text-xs text-fg-muted uppercase tracking-wider mb-2">当前持仓</p>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
@@ -345,7 +345,7 @@ export function FreePractice() {
           {/* 交易历史 */}
           <div className="space-y-3">
             <p className="text-xs text-fg-muted uppercase tracking-wider">最近交易</p>
-            <div className="rounded-xl bg-bg-panel border border-line overflow-hidden">
+            <div className="glass-card overflow-hidden">
               {orders.length === 0 ? (
                 <p className="p-4 text-xs text-fg-dim text-center">暂无交易记录</p>
               ) : (

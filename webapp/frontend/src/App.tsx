@@ -47,11 +47,14 @@ function AppContent() {
   useWS();
   useBootstrapData();
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg text-fg">
+    <div className="relative flex h-screen w-screen overflow-hidden bg-bg text-fg">
+      {/* Liquid Glass 氛围光背景 */}
+      <div className="ambient-bg" aria-hidden="true" />
+
       <Sidebar />
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="relative z-10 flex flex-col flex-1 overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-auto p-4 lg:p-6 xl:p-8">
+        <main className="flex-1 overflow-auto px-4 pb-4 lg:px-6 lg:pb-6 xl:px-8 xl:pb-8">
           <Routes>
             {/* v2.2 新首页与教学入口 */}
             <Route path="/" element={<Navigate to="/today" replace />} />

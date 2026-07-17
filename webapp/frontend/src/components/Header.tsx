@@ -1,8 +1,7 @@
 /**
- * Header.tsx — v2.2 教学化顶部栏
+ * Header.tsx — Liquid Glass 浮动玻璃顶栏
  *
- * 不再展示账户数字和真实账户切换器。
- * 仅保留当前学习阶段的简短提示。
+ * macOS 27 风格：浮动玻璃胶囊，显示模拟账户余额
  */
 import { useSandboxStore } from "../store/sandboxStore";
 
@@ -12,13 +11,14 @@ export function Header() {
   const marketValue = sandboxPositions.reduce((s, p) => s + p.quantity * p.avgCost, 0);
 
   return (
-    <header className="h-16 shrink-0 bg-bg-panel border-b border-line flex items-center px-6">
-      <div className="flex-1" />
-      <div className="flex items-center gap-6">
-        <span className="text-xs text-fg-muted">
-          模拟账户余额 <span className="text-fg font-semibold tabular ml-1">
-            ${(sandboxCash + marketValue).toLocaleString()}
-          </span>
+    <header className="relative z-10 shrink-0 flex items-center justify-end px-6 pt-3 pb-1">
+      {/* 浮动玻璃胶囊 */}
+      <div className="glass-pill rounded-full px-4 py-2 flex items-center gap-2">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400
+                         shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+        <span className="text-xs text-fg-muted">模拟账户</span>
+        <span className="text-sm text-fg font-semibold tabular">
+          ${(sandboxCash + marketValue).toLocaleString()}
         </span>
       </div>
     </header>
