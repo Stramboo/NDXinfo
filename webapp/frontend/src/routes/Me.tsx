@@ -26,26 +26,26 @@ export function Me() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/learning/progress")
+    fetch("/api/learning/progress/dashboard")
       .then((r) => r.json())
       .then((data) => {
         setProfile({
-          level: data?.level || 1,
-          xp: data?.xp || 0,
-          nextLevelXp: data?.nextLevelXp || 100,
-          chapterDone: data?.chapterProgress?.filter((c: any) => c.completed).length || 0,
-          chapterTotal: data?.chapterProgress?.length || 8,
-          streak: data?.streak || 0,
-          questsCompleted: data?.questsCompleted || 0,
-          questsTotal: data?.questsTotal || 8,
+          level: data?.level_num || 1,
+          xp: data?.total_xp || 0,
+          nextLevelXp: data?.next_level_xp || 100,
+          chapterDone: data?.chapters_completed || 0,
+          chapterTotal: data?.chapters_total || 24,
+          streak: data?.streak_days || 0,
+          questsCompleted: data?.quests_completed || 0,
+          questsTotal: data?.quests_total || 16,
           achievements: data?.achievements || [],
         });
       })
       .catch(() => {
         setProfile({
-          level: 1, xp: 15, nextLevelXp: 100,
-          chapterDone: 0, chapterTotal: 8,
-          streak: 1, questsCompleted: 0, questsTotal: 8,
+          level: 1, xp: 0, nextLevelXp: 100,
+          chapterDone: 0, chapterTotal: 24,
+          streak: 0, questsCompleted: 0, questsTotal: 16,
           achievements: [],
         });
       })

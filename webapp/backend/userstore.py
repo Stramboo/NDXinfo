@@ -196,6 +196,79 @@ CREATE TABLE IF NOT EXISTS trade_plans (
     planned_holding TEXT,
     created_at TEXT NOT NULL
 );
+
+-- 交易复盘记录 (v2.4)
+CREATE TABLE IF NOT EXISTS trade_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trade_id TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    quantity REAL,
+    price REAL,
+    pnl REAL,
+    pnl_pct REAL,
+    holding_days REAL,
+    score REAL,
+    mistakes_json TEXT DEFAULT '[]',
+    summary TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_trade ON trade_reviews(trade_id);
+
+-- AI 教练对话历史 (v2.4)
+CREATE TABLE IF NOT EXISTS chat_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role TEXT NOT NULL,               -- 'user' / 'assistant'
+    message TEXT NOT NULL,
+    qtype TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+-- XP 流水 (v2.4) — 幂等键 (source, source_id)
+CREATE TABLE IF NOT EXISTS xp_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    source_id TEXT DEFAULT '',
+    amount INTEGER NOT NULL,
+    total_after INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_xp_log_source ON xp_log(source, source_id);
+
+-- 每日活跃打卡 (v2.4)
+CREATE TABLE IF NOT EXISTS daily_checkins (
+    date TEXT PRIMARY KEY,            -- YYYY-MM-DD
+    xp_earned INTEGER DEFAULT 0,
+    lessons_done INTEGER DEFAULT 0,
+    trades_done INTEGER DEFAULT 0,
+    reviews_done INTEGER DEFAULT 0,
+    explores_done INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- 沙盒净值快照 (v2.4)
+CREATE TABLE IF NOT EXISTS sandbox_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER NOT NULL,
+    equity REAL NOT NULL,
+    cash REAL NOT NULL,
+    market_value REAL NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sandbox_snap_ts ON sandbox_snapshots(ts);
+
+-- 测验/考试成绩 (v2.4)
+CREATE TABLE IF NOT EXISTS quiz_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quiz_id TEXT NOT NULL,
+    quiz_type TEXT NOT NULL,          -- 'lesson_quiz' / 'stage_exam'
+    score INTEGER NOT NULL,
+    correct_count INTEGER NOT NULL,
+    total_questions INTEGER NOT NULL,
+    passed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -938,6 +1011,222 @@ class UserStore:
             conn.execute("DELETE FROM cash_ledger")
             conn.execute("DELETE FROM sandbox_account")
             conn.commit()
+
+    # ============================================================
+    # v2.4 新表 CRUD
+    # ============================================================
+
+    # ---- 交易复盘 ----
+
+    def review_save(self, review: dict):
+        """保存交易复盘记录"""
+        import json as _json
+        now = _now()
+        with self._lock:
+            self._get_conn().execute(
+                """INSERT INTO trade_reviews
+                   (trade_id, symbol, side, quantity, price, pnl, pnl_pct,
+                    holding_days, score, mistakes_json, summary, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (review.get("trade_id", ""), review.get("symbol", ""),
+                 review.get("side", ""), review.get("quantity", 0),
+                 review.get("price", 0), review.get("pnl", 0),
+                 review.get("pnl_pct", 0), review.get("holding_days", 0),
+                 review.get("score", 0),
+                 _json.dumps(review.get("mistakes", []), ensure_ascii=False),
+                 review.get("summary", ""), now),
+            )
+            self._get_conn().commit()
+
+    def review_list(self, limit: int = 20) -> list[dict]:
+        """查询复盘列表（按时间倒序）"""
+        import json as _json
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM trade_reviews ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{
+            "trade_id": r["trade_id"], "symbol": r["symbol"], "side": r["side"],
+            "quantity": r["quantity"], "price": r["price"], "pnl": r["pnl"],
+            "pnl_pct": r["pnl_pct"], "holding_days": r["holding_days"],
+            "score": r["score"], "mistakes": _json.loads(r["mistakes_json"] or "[]"),
+            "summary": r["summary"],
+            "created_at": int(datetime.fromisoformat(r["created_at"]).timestamp() * 1000),
+        } for r in rows]
+
+    def review_get_by_trade(self, trade_id: str) -> Optional[dict]:
+        """按订单 ID 查询复盘"""
+        import json as _json
+        with self._lock:
+            r = self._get_conn().execute(
+                "SELECT * FROM trade_reviews WHERE trade_id=? ORDER BY id DESC LIMIT 1",
+                (trade_id,),
+            ).fetchone()
+        if not r:
+            return None
+        return {
+            "trade_id": r["trade_id"], "symbol": r["symbol"], "side": r["side"],
+            "quantity": r["quantity"], "price": r["price"], "pnl": r["pnl"],
+            "pnl_pct": r["pnl_pct"], "holding_days": r["holding_days"],
+            "score": r["score"], "mistakes": _json.loads(r["mistakes_json"] or "[]"),
+            "summary": r["summary"],
+        }
+
+    # ---- 对话历史 ----
+
+    def chat_save(self, role: str, message: str, qtype: str = ""):
+        """保存一条对话记录"""
+        with self._lock:
+            self._get_conn().execute(
+                "INSERT INTO chat_history (role, message, qtype, created_at) VALUES (?,?,?,?)",
+                (role, message, qtype, _now()),
+            )
+            self._get_conn().commit()
+
+    def chat_history_list(self, limit: int = 50) -> list[dict]:
+        """查询对话历史（按时间正序返回）"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM chat_history ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{"role": r["role"], "message": r["message"], "qtype": r["qtype"],
+                 "created_at": r["created_at"]} for r in reversed(rows)]
+
+    # ---- XP 流水 ----
+
+    def xp_log_add(self, source: str, source_id: str, amount: int, total_after: int):
+        """写入 XP 流水"""
+        with self._lock:
+            self._get_conn().execute(
+                "INSERT INTO xp_log (source, source_id, amount, total_after, created_at) VALUES (?,?,?,?,?)",
+                (source, source_id, amount, total_after, _now()),
+            )
+            self._get_conn().commit()
+
+    def xp_log_exists(self, source: str, source_id: str) -> bool:
+        """检查某来源的 XP 是否已发放（幂等判断）"""
+        with self._lock:
+            row = self._get_conn().execute(
+                "SELECT 1 FROM xp_log WHERE source=? AND source_id=? LIMIT 1",
+                (source, source_id),
+            ).fetchone()
+        return row is not None
+
+    def xp_log_list(self, limit: int = 50) -> list[dict]:
+        """查询 XP 流水"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM xp_log ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{"source": r["source"], "source_id": r["source_id"],
+                 "amount": r["amount"], "total_after": r["total_after"],
+                 "created_at": r["created_at"]} for r in rows]
+
+    # ---- 每日打卡 ----
+
+    def checkin_touch(self, date: str, field: str = "xp_earned", increment: int = 1):
+        """更新当日打卡计数（不存在则创建）"""
+        now = _now()
+        allowed = {"xp_earned", "lessons_done", "trades_done", "reviews_done", "explores_done"}
+        if field not in allowed:
+            return
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                """INSERT INTO daily_checkins (date, created_at, updated_at)
+                   VALUES (?,?,?)
+                   ON CONFLICT(date) DO NOTHING""",
+                (date, now, now),
+            )
+            conn.execute(
+                f"UPDATE daily_checkins SET {field} = {field} + ?, updated_at = ? WHERE date = ?",
+                (increment, now, date),
+            )
+            conn.commit()
+
+    def checkin_get(self, date: str) -> Optional[dict]:
+        """查询某日打卡记录"""
+        with self._lock:
+            r = self._get_conn().execute(
+                "SELECT * FROM daily_checkins WHERE date=?", (date,)
+            ).fetchone()
+        if not r:
+            return None
+        return {"date": r["date"], "xp_earned": r["xp_earned"],
+                "lessons_done": r["lessons_done"], "trades_done": r["trades_done"],
+                "reviews_done": r["reviews_done"], "explores_done": r["explores_done"]}
+
+    def checkin_list(self, days: int = 180) -> list[dict]:
+        """查询最近 N 天打卡记录"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM daily_checkins ORDER BY date DESC LIMIT ?", (days,)
+            ).fetchall()
+        return [{"date": r["date"], "xp_earned": r["xp_earned"],
+                 "lessons_done": r["lessons_done"], "trades_done": r["trades_done"],
+                 "reviews_done": r["reviews_done"], "explores_done": r["explores_done"]}
+                for r in rows]
+
+    # ---- 沙盒净值快照 ----
+
+    def sandbox_snapshot_add(self, ts: int, equity: float, cash: float, market_value: float):
+        """添加净值快照"""
+        with self._lock:
+            self._get_conn().execute(
+                "INSERT INTO sandbox_snapshots (ts, equity, cash, market_value, created_at) VALUES (?,?,?,?,?)",
+                (ts, equity, cash, market_value, _now()),
+            )
+            self._get_conn().commit()
+
+    def sandbox_snapshots_list(self, limit: int = 500) -> list[dict]:
+        """查询净值快照（按时间正序）"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM sandbox_snapshots ORDER BY ts DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{"ts": r["ts"], "equity": r["equity"], "cash": r["cash"],
+                 "market_value": r["market_value"]} for r in reversed(rows)]
+
+    # ---- 测验成绩 ----
+
+    def quiz_result_save(self, quiz_id: str, quiz_type: str, score: int,
+                         correct_count: int, total_questions: int, passed: bool):
+        """保存测验/考试成绩"""
+        with self._lock:
+            self._get_conn().execute(
+                """INSERT INTO quiz_results
+                   (quiz_id, quiz_type, score, correct_count, total_questions, passed, created_at)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (quiz_id, quiz_type, score, correct_count, total_questions,
+                 1 if passed else 0, _now()),
+            )
+            self._get_conn().commit()
+
+    def quiz_result_best(self, quiz_id: str) -> Optional[dict]:
+        """查询某测验的最佳成绩"""
+        with self._lock:
+            r = self._get_conn().execute(
+                """SELECT * FROM quiz_results WHERE quiz_id=?
+                   ORDER BY score DESC, id DESC LIMIT 1""",
+                (quiz_id,),
+            ).fetchone()
+        if not r:
+            return None
+        return {"quiz_id": r["quiz_id"], "quiz_type": r["quiz_type"],
+                "score": r["score"], "correct_count": r["correct_count"],
+                "total_questions": r["total_questions"], "passed": bool(r["passed"])}
+
+    def quiz_results_passed(self, quiz_type: str = "stage_exam") -> list[dict]:
+        """查询所有已通过的考试（用于证书墙）"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                """SELECT quiz_id, MAX(score) as best_score, MIN(created_at) as first_passed_at
+                   FROM quiz_results WHERE quiz_type=? AND passed=1
+                   GROUP BY quiz_id ORDER BY first_passed_at""",
+                (quiz_type,),
+            ).fetchall()
+        return [{"quiz_id": r["quiz_id"], "score": r["best_score"],
+                 "passed_at": r["first_passed_at"]} for r in rows]
 
 
 __all__ = ["UserStore"]

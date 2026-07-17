@@ -44,23 +44,26 @@ export function Today() {
   const [challenge, setChallenge] = useState<Challenge | null>(null);
 
   useEffect(() => {
-    fetch("/api/learning/chapters")
-      .then((r) => r.json())
-      .then((data) => {
-        const chapters = data?.chapters || [];
+    // 并行加载课程章节 + 真实学习统计
+    Promise.all([
+      fetch("/api/learning/chapters").then((r) => r.json()).catch(() => null),
+      fetch("/api/learning/progress/dashboard").then((r) => r.json()).catch(() => null),
+    ])
+      .then(([chData, dashData]) => {
+        const chapters = chData?.chapters || [];
         const done = chapters.filter((c: any) => c.completed).length;
         const current = chapters.find((c: any) => !c.completed);
         const stage = current?.category || "股票是什么";
         setState({
-          level: 1,
-          xp: done * 50,
-          nextXp: 100,
-          chapterDone: done,
-          chapterTotal: chapters.length || 24,
+          level: dashData?.level_num || 1,
+          xp: dashData?.total_xp || 0,
+          nextXp: dashData?.next_level_xp || 100,
+          chapterDone: dashData?.chapters_completed ?? done,
+          chapterTotal: dashData?.chapters_total || chapters.length || 24,
           currentChapterId: current?.id || "ch01",
           currentChapterTitle: stage,
           currentLessonTitle: current?.title || "认识公司与股份",
-          streak: 1,
+          streak: dashData?.streak_days || 0,
         });
       })
       .catch(() => {
@@ -70,7 +73,7 @@ export function Today() {
           currentChapterId: "ch01",
           currentChapterTitle: "股票是什么",
           currentLessonTitle: "认识公司与股份",
-          streak: 1,
+          streak: 0,
         });
       })
       .finally(() => setLoading(false));

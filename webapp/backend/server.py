@@ -69,6 +69,7 @@ from webapp.backend.practice import calc_position, calc_stop_loss, SCENARIOS, ev
 from webapp.backend.review_engine import create_trade_review, MISTAKE_PATTERNS  # noqa: E402
 from webapp.backend.coach_chat import chat as coach_chat  # noqa: E402
 from webapp.backend.daily_challenge import get_daily_challenge, CHALLENGE_POOL  # noqa: E402
+from webapp.backend.xp_service import award_xp, get_level_info  # noqa: E402
 from webapp.backend.ai_coach import TradeCoach, enhance_with_llm  # noqa: E402
 
 # v2.3 Phase 1: 真实数据 Provider（可选）
@@ -761,8 +762,9 @@ def check_quest(req: dict) -> dict:
     if completed:
         if not state.userstore.quest_is_completed(quest_id):
             state.userstore.quest_mark_completed(quest_id)
-            state.userstore.add_xp(quest.get("xp", 0))
-        return {"completed": True, "xp_awarded": quest.get("xp", 0)}
+            result = award_xp(state.userstore, "quest", quest_id, quest.get("xp", 0))
+            return {"completed": True, "xp_awarded": result["amount"]}
+        return {"completed": True, "xp_awarded": 0}
 
     return {"completed": False, "xp_awarded": 0}
 
@@ -778,18 +780,10 @@ def get_learning_dashboard() -> dict:
     total_xp = stats.get("total_xp", 0)
     streak_days = stats.get("streak_days", 0)
 
-    # 学习等级
-    levels = [
-        (0, "学徒"), (100, "见习"), (300, "初级"),
-        (800, "中级"), (2000, "高级"), (5000, "专家"), (10000, "大师"),
-    ]
-    current_level = levels[0][1]
-    next_level_xp = levels[1][0] if len(levels) > 1 else 100
-    for i in range(len(levels) - 1, -1, -1):
-        if total_xp >= levels[i][0]:
-            current_level = levels[i][1]
-            next_level_xp = levels[i + 1][0] if i + 1 < len(levels) else levels[i][0] + 5000
-            break
+    # 学习等级（统一走 xp_service）
+    level_info = get_level_info(total_xp)
+    current_level = level_info["level_name"]
+    next_level_xp = level_info["next_level_xp"]
 
     # 章节详情
     chapters_detail = []
@@ -829,6 +823,8 @@ def get_learning_dashboard() -> dict:
         "quests_total": len(QUESTS),
         "total_xp": total_xp,
         "level": current_level,
+        "level_num": level_info["level"],
+        "level_progress_pct": level_info["progress_pct"],
         "next_level_xp": next_level_xp,
         "streak_days": streak_days,
         "chapters": chapters_detail,
@@ -963,6 +959,12 @@ def coach_weekly_report() -> dict:
     buy_trades = sum(1 for o in orders if o.get("side") == "BUY")
     sell_trades = sum(1 for o in orders if o.get("side") == "SELL")
 
+    # 沙盒净值 = 现金 + 持仓市值（按成本价估算）
+    sandbox_equity = sandbox.get("cash", 0) + sum(
+        p.get("quantity", 0) * p.get("avg_cost", 0)
+        for p in sandbox.get("positions", [])
+    )
+
     ranking = get_ranking()
 
     report = {
@@ -979,7 +981,7 @@ def coach_weekly_report() -> dict:
             "buy_trades": buy_trades,
             "sell_trades": sell_trades,
             "journal_entries": journal_count,
-            "sandbox_equity": sandbox.get("equity", 0),
+            "sandbox_equity": round(sandbox_equity, 2),
         },
         "tips": [],
     }
