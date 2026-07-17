@@ -100,7 +100,11 @@ export function Practice() {
         )}
 
         {/* 自由模拟 */}
-        <div className="rounded-xl bg-bg-panel border border-line p-5 opacity-60">
+        <Link
+          to="/practice/free"
+          className="block rounded-xl bg-bg-panel border border-purple-500/20 p-5
+                     hover:border-purple-500/40 transition group"
+        >
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
               <Gamepad2 className="w-5 h-5 text-purple-400" />
@@ -108,12 +112,12 @@ export function Practice() {
             <div className="flex-1">
               <p className="text-sm font-semibold text-fg">自由模拟</p>
               <p className="text-xs text-fg-muted mt-1">
-                完成基础课程后解锁。可自由选择股票、策略和技术指标进行模拟交易。
+                自由选择股票进行模拟交易，追踪净值变化和交易历史。
               </p>
             </div>
-            <span className="text-xs text-fg-dim">学完课程解锁</span>
+            <span className="text-xs text-purple-400 font-medium">新</span>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* 引导提示 */}

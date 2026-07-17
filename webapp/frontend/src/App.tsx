@@ -9,6 +9,7 @@ import { MarketDetail } from "./routes/MarketDetail";
 import { Practice } from "./routes/Practice";
 import { GuidedPractice } from "./routes/GuidedPractice";
 import { ScenarioTraining } from "./routes/ScenarioTraining";
+import { FreePractice } from "./routes/FreePractice";
 import { Me } from "./routes/Me";
 // 旧路由 — 保留兼容
 import { Trading } from "./routes/Trading";
@@ -59,6 +60,7 @@ function AppContent() {
             <Route path="/practice" element={<Practice />} />
             <Route path="/practice/guided" element={<GuidedPractice />} />
             <Route path="/practice/scenario/:scenarioId" element={<ScenarioTraining />} />
+            <Route path="/practice/free" element={<FreePractice />} />
             <Route path="/me" element={<Me />} />
 
             {/* 学习路径（保留） */}
