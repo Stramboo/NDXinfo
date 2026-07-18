@@ -14,6 +14,10 @@ import { ScenarioTraining } from "./routes/ScenarioTraining";
 import { FreePractice } from "./routes/FreePractice";
 import { ReviewCenter } from "./routes/ReviewCenter";
 import { StageExam } from "./routes/StageExam";
+import { EmotionTraining } from "./routes/EmotionTraining";
+import { HistoricalReplay } from "./routes/HistoricalReplay";
+import { MistakeBook } from "./features/MistakeBook";
+import { KnowledgeMap } from "./features/KnowledgeMap";
 import { Me } from "./routes/Me";
 // 旧路由 — 保留兼容
 import { Trading } from "./routes/Trading";
@@ -81,6 +85,10 @@ function AppContent() {
             <Route path="/learning" element={<Learning />} />
             <Route path="/learning/:chapterId" element={<LearningChapter />} />
             <Route path="/learning/exam/:stageId" element={<StageExam />} />
+            <Route path="/practice/emotion" element={<EmotionTraining />} />
+            <Route path="/practice/replay" element={<HistoricalReplay />} />
+            <Route path="/me/mistakes" element={<MistakeBook />} />
+            <Route path="/me/knowledge-map" element={<KnowledgeMap />} />
             <Route path="/learning/dashboard" element={<LearningDashboard />} />
             <Route path="/glossary" element={<Glossary />} />
 

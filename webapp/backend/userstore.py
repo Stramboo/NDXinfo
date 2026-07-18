@@ -269,6 +269,85 @@ CREATE TABLE IF NOT EXISTS quiz_results (
     passed INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
+
+-- 错题本 (v2.5)
+CREATE TABLE IF NOT EXISTS mistake_book (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,             -- 'quiz' / 'scenario' / 'exam'
+    question_id TEXT NOT NULL,
+    knowledge_point TEXT DEFAULT '',
+    chapter TEXT DEFAULT '',
+    wrong_count INTEGER DEFAULT 1,
+    last_wrong_at TEXT NOT NULL,
+    last_reviewed_at TEXT DEFAULT '',
+    mastery_level INTEGER DEFAULT 0,  -- 0未掌握 1部分 2已掌握
+    created_at TEXT NOT NULL,
+    UNIQUE(source, question_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mistake_kp ON mistake_book(knowledge_point);
+
+-- 情绪训练记录 (v2.5)
+CREATE TABLE IF NOT EXISTS emotion_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scenario_id TEXT NOT NULL,
+    pre_emotion INTEGER DEFAULT 5,
+    decision TEXT DEFAULT '',
+    post_emotion INTEGER DEFAULT 5,
+    rationality_score INTEGER DEFAULT 50,
+    reflection TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+-- 历史事件回放进度 (v2.5)
+CREATE TABLE IF NOT EXISTS history_replay_progress (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    decisions_json TEXT DEFAULT '[]',
+    score INTEGER DEFAULT 0,
+    completed INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    UNIQUE(event_id)
+);
+
+-- 实盘 readiness 考核 (v2.5)
+CREATE TABLE IF NOT EXISTS live_readiness (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dimension TEXT NOT NULL,          -- 'knowledge'/'discipline'/'emotion'/'risk'
+    score INTEGER NOT NULL,
+    passed INTEGER DEFAULT 0,
+    evidence TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+-- 能力雷达图快照 (v2.5)
+CREATE TABLE IF NOT EXISTS ability_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    knowledge INTEGER DEFAULT 0,
+    judgment INTEGER DEFAULT 0,
+    discipline INTEGER DEFAULT 0,
+    risk_control INTEGER DEFAULT 0,
+    emotion INTEGER DEFAULT 0,
+    review_skill INTEGER DEFAULT 0,
+    weak_points TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+-- 图表标注记录 (v2.5)
+CREATE TABLE IF NOT EXISTS chart_annotations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    annotation_type TEXT DEFAULT '',
+    annotation_json TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+-- Pro 解锁码 (v2.5)
+CREATE TABLE IF NOT EXISTS pro_unlock_codes (
+    code TEXT PRIMARY KEY,
+    feature TEXT NOT NULL,
+    activated_at TEXT,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -1227,6 +1306,231 @@ class UserStore:
             ).fetchall()
         return [{"quiz_id": r["quiz_id"], "score": r["best_score"],
                  "passed_at": r["first_passed_at"]} for r in rows]
+
+    # ============================================================
+    # v2.5 新表 CRUD
+    # ============================================================
+
+    # ---- 错题本 ----
+
+    def mistake_add(self, source: str, question_id: str, knowledge_point: str = "", chapter: str = ""):
+        """添加/更新错题（已存在则 wrong_count+1）"""
+        now = _now()
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                """INSERT INTO mistake_book (source, question_id, knowledge_point, chapter,
+                   wrong_count, last_wrong_at, created_at)
+                   VALUES (?,?,?,?,1,?,?)
+                   ON CONFLICT(source, question_id) DO UPDATE SET
+                   wrong_count = wrong_count + 1,
+                   last_wrong_at = ?,
+                   mastery_level = 0""",
+                (source, question_id, knowledge_point, chapter, now, now, now),
+            )
+            conn.commit()
+
+    def mistake_list(self, mastery_level: int = None) -> list[dict]:
+        """查询错题列表"""
+        with self._lock:
+            if mastery_level is not None:
+                rows = self._get_conn().execute(
+                    "SELECT * FROM mistake_book WHERE mastery_level=? ORDER BY last_wrong_at DESC",
+                    (mastery_level,),
+                ).fetchall()
+            else:
+                rows = self._get_conn().execute(
+                    "SELECT * FROM mistake_book ORDER BY last_wrong_at DESC"
+                ).fetchall()
+        return [{"source": r["source"], "question_id": r["question_id"],
+                 "knowledge_point": r["knowledge_point"], "chapter": r["chapter"],
+                 "wrong_count": r["wrong_count"], "mastery_level": r["mastery_level"],
+                 "last_wrong_at": r["last_wrong_at"]} for r in rows]
+
+    def mistake_update_mastery(self, source: str, question_id: str, mastery_level: int):
+        """更新错题掌握度"""
+        now = _now()
+        with self._lock:
+            self._get_conn().execute(
+                "UPDATE mistake_book SET mastery_level=?, last_reviewed_at=? WHERE source=? AND question_id=?",
+                (mastery_level, now, source, question_id),
+            )
+            self._get_conn().commit()
+
+    def mistake_stats(self) -> dict:
+        """错题统计：按知识点聚类"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT knowledge_point, COUNT(*) as cnt, SUM(wrong_count) as total_wrong FROM mistake_book GROUP BY knowledge_point"
+            ).fetchall()
+        return {r["knowledge_point"] or "未分类": {"count": r["cnt"], "total_wrong": r["total_wrong"]} for r in rows}
+
+    # ---- 情绪训练 ----
+
+    def emotion_journal_save(self, scenario_id: str, pre_emotion: int, decision: str,
+                             post_emotion: int, rationality_score: int, reflection: str = ""):
+        """保存情绪训练记录"""
+        with self._lock:
+            self._get_conn().execute(
+                """INSERT INTO emotion_journal
+                   (scenario_id, pre_emotion, decision, post_emotion, rationality_score, reflection, created_at)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (scenario_id, pre_emotion, decision, post_emotion, rationality_score, reflection, _now()),
+            )
+            self._get_conn().commit()
+
+    def emotion_journal_list(self, limit: int = 20) -> list[dict]:
+        """查询情绪训练记录"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM emotion_journal ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [{"scenario_id": r["scenario_id"], "pre_emotion": r["pre_emotion"],
+                 "decision": r["decision"], "post_emotion": r["post_emotion"],
+                 "rationality_score": r["rationality_score"], "reflection": r["reflection"],
+                 "created_at": r["created_at"]} for r in rows]
+
+    # ---- 历史回放 ----
+
+    def history_replay_save(self, event_id: str, decisions: list, score: int, completed: bool):
+        """保存历史事件回放进度"""
+        import json as _json
+        now = _now()
+        with self._lock:
+            conn = self._get_conn()
+            conn.execute(
+                """INSERT INTO history_replay_progress (event_id, decisions_json, score, completed, created_at)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT(event_id) DO UPDATE SET
+                   decisions_json=excluded.decisions_json, score=excluded.score,
+                   completed=excluded.completed, created_at=excluded.created_at""",
+                (event_id, _json.dumps(decisions), score, 1 if completed else 0, now),
+            )
+            conn.commit()
+
+    def history_replay_list(self) -> list[dict]:
+        """查询已回放的事件"""
+        import json as _json
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT * FROM history_replay_progress ORDER BY id DESC"
+            ).fetchall()
+        return [{"event_id": r["event_id"], "score": r["score"],
+                 "completed": bool(r["completed"])} for r in rows]
+
+    # ---- 实盘 readiness ----
+
+    def live_readiness_save(self, dimension: str, score: int, passed: bool, evidence: str = ""):
+        """保存实盘 readiness 考核结果"""
+        with self._lock:
+            self._get_conn().execute(
+                """INSERT INTO live_readiness (dimension, score, passed, evidence, created_at)
+                   VALUES (?,?,?,?,?)""",
+                (dimension, score, 1 if passed else 0, evidence, _now()),
+            )
+            self._get_conn().commit()
+
+    def live_readiness_list(self) -> list[dict]:
+        """查询 readiness 最新状态（每维度取最新）"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                """SELECT * FROM live_readiness ORDER BY id DESC"""
+            ).fetchall()
+        seen = {}
+        for r in rows:
+            if r["dimension"] not in seen:
+                seen[r["dimension"]] = {"dimension": r["dimension"], "score": r["score"],
+                                        "passed": bool(r["passed"]), "evidence": r["evidence"]}
+        return list(seen.values())
+
+    # ---- 能力快照 ----
+
+    def ability_snapshot_save(self, scores: dict, weak_points: str = ""):
+        """保存能力雷达图快照"""
+        with self._lock:
+            self._get_conn().execute(
+                """INSERT INTO ability_snapshots
+                   (knowledge, judgment, discipline, risk_control, emotion, review_skill, weak_points, created_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (scores.get("knowledge", 0), scores.get("judgment", 0),
+                 scores.get("discipline", 0), scores.get("risk_control", 0),
+                 scores.get("emotion", 0), scores.get("review_skill", 0),
+                 weak_points, _now()),
+            )
+            self._get_conn().commit()
+
+    def ability_snapshot_latest(self) -> dict | None:
+        """查询最新能力快照"""
+        with self._lock:
+            r = self._get_conn().execute(
+                "SELECT * FROM ability_snapshots ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        if not r:
+            return None
+        return {"knowledge": r["knowledge"], "judgment": r["judgment"],
+                "discipline": r["discipline"], "risk_control": r["risk_control"],
+                "emotion": r["emotion"], "review_skill": r["review_skill"],
+                "weak_points": r["weak_points"]}
+
+    # ---- 图表标注 ----
+
+    def chart_annotation_save(self, symbol: str, annotation_type: str, annotation: dict):
+        """保存图表标注"""
+        import json as _json
+        with self._lock:
+            self._get_conn().execute(
+                "INSERT INTO chart_annotations (symbol, annotation_type, annotation_json, created_at) VALUES (?,?,?,?)",
+                (symbol, annotation_type, _json.dumps(annotation), _now()),
+            )
+            self._get_conn().commit()
+
+    def chart_annotations_list(self, symbol: str = "") -> list[dict]:
+        """查询图表标注"""
+        import json as _json
+        with self._lock:
+            if symbol:
+                rows = self._get_conn().execute(
+                    "SELECT * FROM chart_annotations WHERE symbol=? ORDER BY id DESC", (symbol,)
+                ).fetchall()
+            else:
+                rows = self._get_conn().execute(
+                    "SELECT * FROM chart_annotations ORDER BY id DESC LIMIT 50"
+                ).fetchall()
+        return [{"symbol": r["symbol"], "annotation_type": r["annotation_type"],
+                 "annotation": _json.loads(r["annotation_json"]), "created_at": r["created_at"]} for r in rows]
+
+    # ---- Pro 解锁码 ----
+
+    def pro_code_redeem(self, code: str, feature: str) -> bool:
+        """兑换 Pro 解锁码"""
+        now = _now()
+        with self._lock:
+            conn = self._get_conn()
+            r = conn.execute("SELECT activated_at FROM pro_unlock_codes WHERE code=?", (code,)).fetchone()
+            if not r:
+                return False
+            if r["activated_at"]:
+                return False  # 已激活
+            conn.execute("UPDATE pro_unlock_codes SET activated_at=? WHERE code=?", (now, code))
+            conn.commit()
+            return True
+
+    def pro_features_active(self) -> list[str]:
+        """查询已激活的 Pro 功能"""
+        with self._lock:
+            rows = self._get_conn().execute(
+                "SELECT feature FROM pro_unlock_codes WHERE activated_at IS NOT NULL"
+            ).fetchall()
+        return [r["feature"] for r in rows]
+
+    def pro_code_create(self, code: str, feature: str):
+        """创建 Pro 解锁码（管理用）"""
+        with self._lock:
+            self._get_conn().execute(
+                "INSERT OR IGNORE INTO pro_unlock_codes (code, feature, created_at) VALUES (?,?,?)",
+                (code, feature, _now()),
+            )
+            self._get_conn().commit()
 
 
 __all__ = ["UserStore"]

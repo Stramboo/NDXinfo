@@ -69,6 +69,17 @@ from webapp.backend.practice import calc_position, calc_stop_loss, SCENARIOS, ev
 from webapp.backend.review_engine import create_trade_review, MISTAKE_PATTERNS  # noqa: E402
 from webapp.backend.coach_chat import chat as coach_chat, chat_with_llm, classify_question  # noqa: E402
 from webapp.backend.coach_proactive import generate_proactive_messages  # noqa: E402
+from webapp.backend.scenario_questions import (  # noqa: E402
+    get_chapter_scenario_question, grade_scenario_question,
+    get_knowledge_map, KNOWLEDGE_POINTS,
+)
+from webapp.backend.emotion_scenarios import (  # noqa: E402
+    get_emotion_scenario, get_emotion_scenario_with_answers, list_emotion_scenarios,
+)
+from webapp.backend.historical_events import (  # noqa: E402
+    get_historical_event, get_historical_event_full, list_historical_events,
+    evaluate_historical_replay,
+)
 from webapp.backend.daily_challenge import get_daily_challenge, CHALLENGE_POOL  # noqa: E402
 from webapp.backend.xp_service import award_xp, get_level_info  # noqa: E402
 from webapp.backend.review_service import auto_review_on_sell  # noqa: E402
@@ -1440,6 +1451,217 @@ def set_pref(key: str, req: dict) -> dict:
 def get_pref(key: str) -> dict:
     """读取用户偏好"""
     return {"key": key, "value": state.userstore.pref_get(key)}
+
+
+# ---- 情景判断题 + 错题本 + 知识图谱 API (v2.5 Phase 1a) ----
+
+@app.get("/api/scenario-questions/{chapter_id}")
+def get_chapter_scenario_api(chapter_id: str) -> dict:
+    """获取某课的情景判断题"""
+    q = get_chapter_scenario_question(chapter_id)
+    if not q:
+        raise HTTPException(404, "该课程没有情景题")
+    return q
+
+
+@app.post("/api/scenario-questions/{question_id}/submit")
+def submit_scenario_question_api(question_id: str, req: dict) -> dict:
+    """提交情景判断题，判分 + 错题本 + XP"""
+    result = grade_scenario_question(question_id, req.get("answer", {}))
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+
+    # 错题入册
+    if not result["passed"]:
+        try:
+            state.userstore.mistake_add(
+                "scenario", question_id,
+                result["knowledge_point"], result["chapter"],
+            )
+        except Exception:
+            pass
+    else:
+        # 答对则更新掌握度
+        try:
+            state.userstore.mistake_update_mastery("scenario", question_id, 2)
+        except Exception:
+            pass
+
+    # XP（幂等）
+    if result["passed"]:
+        xp_result = award_xp(state.userstore, "scenario_q", question_id, 15)
+        result["xp_earned"] = xp_result["amount"]
+    else:
+        result["xp_earned"] = 0
+
+    return result
+
+
+@app.get("/api/mistakes")
+def list_mistakes(mastery: int = None) -> list[dict]:
+    """获取错题本"""
+    return state.userstore.mistake_list(mastery)
+
+
+@app.get("/api/mistakes/stats")
+def mistake_stats() -> dict:
+    """错题统计（按知识点聚类）"""
+    return state.userstore.mistake_stats()
+
+
+@app.post("/api/mistakes/{source}/{question_id}/review")
+def mark_mistake_reviewed(source: str, question_id: str, req: dict) -> dict:
+    """标记错题为已复习"""
+    state.userstore.mistake_update_mastery(source, question_id, req.get("mastery", 1))
+    return {"ok": True}
+
+
+@app.get("/api/knowledge-map")
+def knowledge_map() -> dict:
+    """获取知识点图谱"""
+    km = get_knowledge_map()
+    # 附加掌握度
+    mistakes = state.userstore.mistake_stats()
+    for node in km["nodes"]:
+        kp = node["id"]
+        if kp in mistakes:
+            node["mistake_count"] = mistakes[kp]["count"]
+            node["mastery"] = max(0, 100 - mistakes[kp]["total_wrong"] * 20)
+        else:
+            node["mistake_count"] = 0
+            node["mastery"] = 100
+    return km
+
+
+# ---- 情绪训练 API (v2.5 Phase 1b) ----
+
+@app.get("/api/emotion-scenarios")
+def list_emotion_scenarios_api() -> list[dict]:
+    """列出情绪训练场景"""
+    return list_emotion_scenarios()
+
+
+@app.get("/api/emotion-scenarios/{scenario_id}")
+def get_emotion_scenario_api(scenario_id: str) -> dict:
+    """获取情绪训练场景"""
+    s = get_emotion_scenario(scenario_id)
+    if not s:
+        raise HTTPException(404, "场景不存在")
+    return s
+
+
+@app.post("/api/emotion-scenarios/{scenario_id}/submit")
+def submit_emotion_scenario_api(scenario_id: str, req: dict) -> dict:
+    """提交情绪训练场景决策"""
+    full = get_emotion_scenario_with_answers(scenario_id)
+    if not full:
+        raise HTTPException(404, "场景不存在")
+
+    decisions = req.get("decisions", [])
+    pre_emotion = req.get("pre_emotion", 5)
+    post_emotion = req.get("post_emotion", 5)
+    reflection = req.get("reflection", "")
+
+    # 评估
+    result_map = {"good": 100, "partial": 50, "bad": 0}
+    scores = []
+    feedback = []
+    for i, step in enumerate(full["steps"]):
+        if i >= len(decisions):
+            break
+        choice_id = decisions[i].get("choice", "")
+        opt = next((o for o in step["options"] if o["id"] == choice_id), None)
+        if not opt:
+            scores.append(0)
+            continue
+        scores.append(result_map.get(opt["result"], 0))
+        feedback.append({"step": step["id"], "result": opt["result"], "feedback": opt["feedback"]})
+
+    score = int(sum(scores) / len(scores)) if scores else 0
+    rationality = score  # 理性度评分=决策质量
+
+    # 保存情绪日志
+    try:
+        state.userstore.emotion_journal_save(
+            scenario_id, pre_emotion, ",".join(str(d.get("choice")) for d in decisions),
+            post_emotion, rationality, reflection,
+        )
+    except Exception as e:
+        logger.warning(f"情绪日志保存失败: {e}")
+
+    # XP
+    xp_earned = 0
+    if score >= 60:
+        xp_result = award_xp(state.userstore, "emotion", scenario_id, full.get("xp", 60))
+        xp_earned = xp_result["amount"]
+
+    return {
+        "scenario_id": scenario_id, "score": score,
+        "passed": score >= 60,
+        "feedback": feedback,
+        "takeaway": full.get("takeaway", ""),
+        "emotion_lesson": full.get("emotion_lesson", ""),
+        "rationality_score": rationality,
+        "xp_earned": xp_earned,
+    }
+
+
+@app.get("/api/emotion-journal")
+def emotion_journal_list(limit: int = 20) -> list[dict]:
+    """获取情绪训练历史"""
+    return state.userstore.emotion_journal_list(limit)
+
+
+# ---- 历史事件回放 API (v2.5 Phase 1c) ----
+
+@app.get("/api/historical-events")
+def list_historical_events_api() -> list[dict]:
+    """列出所有历史事件"""
+    return list_historical_events()
+
+
+@app.get("/api/historical-events/{event_id}")
+def get_historical_event_api(event_id: str) -> dict:
+    """获取历史事件详情（不含答案）"""
+    e = get_historical_event(event_id)
+    if not e:
+        raise HTTPException(404, "事件不存在")
+    # 附加用户进度
+    progress = state.userstore.history_replay_list()
+    done = next((p for p in progress if p["event_id"] == event_id), None)
+    if done:
+        e["user_progress"] = done
+    return e
+
+
+@app.post("/api/historical-events/{event_id}/submit")
+def submit_historical_replay_api(event_id: str, req: dict) -> dict:
+    """提交历史事件回放决策"""
+    decisions = req.get("decisions", [])
+    result = evaluate_historical_replay(event_id, decisions)
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+
+    # 保存进度
+    try:
+        state.userstore.history_replay_save(
+            event_id, decisions, result["score"], result["passed"],
+        )
+    except Exception as e:
+        logger.warning(f"历史回放进度保存失败: {e}")
+
+    # XP
+    if result["xp_earned"] > 0:
+        xp_result = award_xp(state.userstore, "history", event_id, result["xp_earned"])
+        result["xp_earned"] = xp_result["amount"]
+
+    return result
+
+
+@app.get("/api/historical-events/progress")
+def historical_replay_progress() -> list[dict]:
+    """获取历史回放进度"""
+    return state.userstore.history_replay_list()
 
 
 # ---- 沙盒交易 API ----
