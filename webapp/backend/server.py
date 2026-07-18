@@ -86,6 +86,7 @@ from webapp.backend.diagnosis_service import (  # noqa: E402
 from webapp.backend.advanced_analysis import (  # noqa: E402
     list_valuation_models, get_valuation_model, calculate_valuation, BACKTEST_TEACHING,
 )
+from webapp.backend.live_readiness import evaluate_readiness  # noqa: E402
 from webapp.backend.daily_challenge import get_daily_challenge, CHALLENGE_POOL  # noqa: E402
 from webapp.backend.xp_service import award_xp, get_level_info  # noqa: E402
 from webapp.backend.review_service import auto_review_on_sell  # noqa: E402
@@ -1723,6 +1724,94 @@ def calculate_valuation_api(model_id: str, req: dict) -> dict:
 def get_backtest_teaching() -> dict:
     """获取回测教学版内容"""
     return BACKTEST_TEACHING
+
+
+# ---- 实盘 readiness + 图表标注 API (v2.5 Phase 3) ----
+
+@app.get("/api/live/readiness")
+def get_live_readiness() -> dict:
+    """获取实盘 readiness 评估"""
+    return evaluate_readiness(state.userstore)
+
+
+@app.get("/api/live/readiness/history")
+def get_readiness_history() -> list[dict]:
+    """获取 readiness 历史记录"""
+    return state.userstore.live_readiness_list()
+
+
+@app.post("/api/chart-annotations")
+def save_chart_annotation(req: dict) -> dict:
+    """保存图表标注"""
+    state.userstore.chart_annotation_save(
+        req.get("symbol", ""), req.get("type", ""), req.get("annotation", {}),
+    )
+    return {"ok": True}
+
+
+@app.get("/api/chart-annotations")
+def list_chart_annotations(symbol: str = "") -> list[dict]:
+    """获取图表标注"""
+    return state.userstore.chart_annotations_list(symbol)
+
+
+# ---- Pro 商业化 + 匿名排行榜 API (v2.5 Phase 4) ----
+
+@app.post("/api/pro/redeem")
+def redeem_pro_code(req: dict) -> dict:
+    """兑换 Pro 解锁码"""
+    code = req.get("code", "")
+    feature = req.get("feature", "pro")
+    if not code:
+        raise HTTPException(400, "code required")
+    success = state.userstore.pro_code_redeem(code, feature)
+    return {"ok": success, "feature": feature if success else None}
+
+
+@app.get("/api/pro/features")
+def get_pro_features() -> dict:
+    """查询已激活的 Pro 功能"""
+    return {"features": state.userstore.pro_features_active()}
+
+
+@app.post("/api/pro/admin/create-code")
+def create_pro_code(req: dict) -> dict:
+    """管理端：创建 Pro 解锁码"""
+    code = req.get("code", "")
+    feature = req.get("feature", "pro")
+    if not code:
+        raise HTTPException(400, "code required")
+    state.userstore.pro_code_create(code, feature)
+    return {"ok": True, "code": code, "feature": feature}
+
+
+# 匿名排行榜（opt-in，本地存储，无云端）
+@app.get("/api/leaderboard/local")
+def get_local_leaderboard() -> dict:
+    """本地排行榜（基于自己的历史成绩，模拟与其他用户对比）"""
+    stats = state.userstore.get_learning_stats()
+    total_xp = stats.get("total_xp", 0)
+
+    # 模拟其他用户数据（纯本地，无真实社交）
+    import random
+    random.seed(total_xp)  # 基于 XP 稳定生成
+    mock_users = [
+        {"rank": i, "name": f"学习者#{1000+i}", "xp": max(0, total_xp + random.randint(-500, 500)),
+         "is_you": False}
+        for i in range(1, 11)
+    ]
+    # 插入当前用户
+    you = {"rank": 0, "name": "你", "xp": total_xp, "is_you": True}
+    all_users = mock_users + [you]
+    all_users.sort(key=lambda x: x["xp"], reverse=True)
+    for i, u in enumerate(all_users):
+        u["rank"] = i + 1
+
+    return {
+        "you": next(u for u in all_users if u["is_you"]),
+        "top_users": all_users[:10],
+        "note": "这是基于你水平的模拟排名，帮助你设定目标。真实社交功能需 opt-in 云同步。",
+    }
 
 
 # ---- 沙盒交易 API ----
