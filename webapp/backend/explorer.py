@@ -372,26 +372,32 @@ INDUSTRIES = [
 ]
 
 def get_market_status(market_id: str) -> dict:
-    """计算某市场当前是否在交易时间（简化版：按北京时间偏移估算）"""
+    """计算某市场当前是否在交易时间（v2.4：周末判断 + 跨天区段修正）"""
     now = datetime.now(CST)
     m = next((m for m in MARKETS if m["id"] == market_id), None)
     if not m:
         return {"isOpen": False, "status": "unknown"}
-    # 简化：根据市场 ID 做北京时间区段判断
+
+    # 周末休市（周六/周日，按北京时间近似）
+    if now.weekday() >= 5:
+        return {"isOpen": False, "status": "closed_weekend"}
+
     hour = now.hour
+    # 跨天区段用列表表示 [(start, end), ...]
     market_hours = {
-        "cn": (9, 15), "hk": (9, 16), "jp": (8, 14), "kr": (8, 14),
-        "us": (21, 28), "ca": (21, 28),
-        "uk": (15, 23), "de": (15, 23),
+        "cn": [(9, 15)], "hk": [(9, 16)], "jp": [(8, 14)], "kr": [(8, 14)],
+        "us": [(21, 24), (0, 5)], "ca": [(21, 24), (0, 5)],
+        "uk": [(15, 24), (0, 0)], "de": [(15, 24), (0, 0)],
     }
     if market_id in market_hours:
-        st, en = market_hours[market_id]
-        if st <= hour < en:
-            return {"isOpen": True, "status": "open"}
-        elif hour < st:
+        for st, en in market_hours[market_id]:
+            if st <= hour < en:
+                return {"isOpen": True, "status": "open"}
+        # 判断是未开盘还是已收盘
+        first_open = min(st for st, _ in market_hours[market_id])
+        if hour < first_open:
             return {"isOpen": False, "status": "scheduled"}
-        else:
-            return {"isOpen": False, "status": "closed"}
+        return {"isOpen": False, "status": "closed"}
     return {"isOpen": False, "status": "unknown"}
 
 def get_companies(market=None, sector=None, industry=None, search=None):

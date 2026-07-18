@@ -23,12 +23,14 @@ const STATUS_LABELS: Record<string, string> = {
   open: "交易中",
   scheduled: "即将开盘",
   closed: "已收盘",
+  closed_weekend: "周末休市",
   unknown: "-",
 };
 const STATUS_COLORS: Record<string, string> = {
   open: "text-emerald-400 bg-emerald-500/10",
   scheduled: "text-amber-400 bg-amber-500/10",
   closed: "text-fg-dim bg-bg-subtle",
+  closed_weekend: "text-fg-dim bg-bg-subtle",
   unknown: "text-fg-dim bg-bg-subtle",
 };
 

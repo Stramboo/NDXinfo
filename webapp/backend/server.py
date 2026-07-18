@@ -342,13 +342,36 @@ def get_full_analysis() -> dict:
 
 @app.get("/api/market/batch")
 def get_market_batch(symbols: str = "") -> dict:
-    """批量获取价格快照（学习沙盒用）"""
+    """批量获取价格快照（v2.4：真实数据模式并发拉取，逐 symbol 降级）"""
     sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     prices = {}
-    for sym in sym_list:
-        if sym in state.engine.prices:
-            prices[sym] = round(state.engine.prices[sym], 2)
-    return {"prices": prices, "ts": int(time.time() * 1000)}
+    sources = {}
+
+    if ENABLE_REAL_DATA:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        def _fetch(sym):
+            try:
+                q = get_quote(sym)
+                return sym, q.get("price"), "real"
+            except Exception:
+                return sym, None, "mock"
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = {pool.submit(_fetch, s): s for s in sym_list}
+            for fut in as_completed(futures, timeout=8):
+                sym, price, src = fut.result()
+                if price:
+                    prices[sym] = round(price, 2)
+                    sources[sym] = src
+                elif sym in state.engine.prices:
+                    prices[sym] = round(state.engine.prices[sym], 2)
+                    sources[sym] = "mock"
+    else:
+        for sym in sym_list:
+            if sym in state.engine.prices:
+                prices[sym] = round(state.engine.prices[sym], 2)
+                sources[sym] = "mock"
+
+    return {"prices": prices, "sources": sources, "ts": int(time.time() * 1000)}
 
 
 @app.get("/api/market/{symbol}")
@@ -892,12 +915,27 @@ def explore_companies(
 
 @app.get("/api/explore/companies/{symbol}")
 def explore_company_detail(symbol: str) -> dict:
-    """获取单个公司详情"""
+    """获取单个公司详情（v2.4：真实数据模式附加实时报价）"""
     c = next((c for c in COMPANIES if c["symbol"].upper() == symbol.upper()), None)
     if not c:
         raise HTTPException(404, f"Company '{symbol}' not found")
     market = next((m for m in MARKETS if m["id"] == c["market"]), None)
-    return {**c, "marketInfo": market}
+    result = {**c, "marketInfo": market}
+
+    # v2.4: 真实数据模式附加实时报价（新增键，不改契约）
+    if ENABLE_REAL_DATA:
+        try:
+            quote = get_quote(symbol.upper())
+            if quote and quote.get("price"):
+                result["real_quote"] = {
+                    "price": quote["price"],
+                    "change_pct": quote.get("change_pct", 0),
+                    "source": "real",
+                }
+        except Exception:
+            pass  # 静默降级，不影响静态数据
+
+    return result
 
 
 @app.get("/api/explore/industries")
