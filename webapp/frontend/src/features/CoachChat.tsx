@@ -11,6 +11,7 @@ interface Message {
   role: "user" | "coach";
   content: string;
   ts: number;
+  source?: "llm" | "rule";
 }
 
 const QUICK_QUESTIONS = [
@@ -41,6 +42,24 @@ export function CoachChat({ onClose }: { onClose?: () => void }) {
     scrollToBottom();
   }, [messages]);
 
+  // v2.4: 加载历史对话
+  useEffect(() => {
+    fetch("/api/coach/chat/history?limit=30")
+      .then((r) => r.json())
+      .then((history: { role: string; message: string; created_at: string }[]) => {
+        if (history.length > 0) {
+          const restored: Message[] = history.map((h, i) => ({
+            id: `history-${i}`,
+            role: h.role === "user" ? "user" : "coach",
+            content: h.message,
+            ts: new Date(h.created_at).getTime(),
+          }));
+          setMessages((prev) => [prev[0], ...restored]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const handleSend = async (text?: string) => {
     const msg = text || input.trim();
     if (!msg || loading) return;
@@ -68,6 +87,7 @@ export function CoachChat({ onClose }: { onClose?: () => void }) {
         role: "coach",
         content: data.response,
         ts: data.ts,
+        source: data.source,
       };
       setMessages((prev) => [...prev, coachMsg]);
     } catch (e) {
@@ -129,6 +149,13 @@ export function CoachChat({ onClose }: { onClose?: () => void }) {
               }`}
             >
               {msg.content}
+              {msg.role === "coach" && msg.source && msg.id !== "welcome" && (
+                <div className="mt-1.5 pt-1.5 border-t border-white/[0.06]">
+                  <span className="text-[9px] text-fg-dim">
+                    {msg.source === "llm" ? "✨ AI 深度解答" : "⚡ 快捷解答"}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ))}

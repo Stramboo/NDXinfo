@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-coach_chat.py — AI 教练对话引擎 (v2.3 Phase 4)
+coach_chat.py — AI 教练对话引擎 (v2.3 Phase 4 / v2.4 Phase 6)
 
 功能:
   - 规则分类器：识别用户问题类型（概念/交易/市场/学习路径）
   - 术语解释：从 GLOSSARY 匹配并返回解释
   - 交易回顾：查询用户最近交易并生成分析
   - 学习推荐：根据进度推荐下一步课程
-  - LLM 兜底：无法匹配时调用 DeepSeek（可选）
+  - LLM 兜底：无法匹配时调用 DeepSeek（可选，v2.4 实现）
 """
 
 import logging
+import os
 import re
 from typing import Optional
 
@@ -275,4 +276,77 @@ def chat(message: str, context: dict) -> str:
     return generate_general_response()
 
 
-__all__ = ["chat", "classify_question", "extract_term"]
+# ============================================================
+# LLM 增强对话 (v2.4 Phase 6)
+# ============================================================
+
+def chat_with_llm(message: str, history: list[dict], context: dict) -> str:
+    """
+    DeepSeek 多轮对话
+
+    参数:
+        message: 用户消息
+        history: 最近对话历史 [{role, message}, ...]
+        context: 用户上下文 {level_name, total_xp, chapters_completed,
+                            recent_trades, recent_reviews}
+
+    返回:
+        str: LLM 回复；无 API Key 或异常时返回空串（调用方降级到规则引擎）
+    """
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        return ""
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
+    except ImportError:
+        logger.warning("openai 未安装，跳过 LLM 对话")
+        return ""
+
+    # 构建用户上下文摘要
+    ctx_lines = [f"用户等级: {context.get('level_name', '学徒')} (XP: {context.get('total_xp', 0)})",
+                 f"已完成课程: {context.get('chapters_completed', 0)}/24"]
+    recent_trades = context.get("recent_trades", [])[:5]
+    if recent_trades:
+        trade_strs = [f"{t.get('side')} {t.get('symbol')} {t.get('quantity')}股@${t.get('price', 0):.2f}"
+                      for t in recent_trades]
+        ctx_lines.append(f"最近交易: {'; '.join(trade_strs)}")
+    recent_reviews = context.get("recent_reviews", [])[:3]
+    if recent_reviews:
+        review_strs = [f"{r.get('symbol')} 评分{r.get('score', 0):.0f}" for r in recent_reviews]
+        ctx_lines.append(f"最近复盘: {'; '.join(review_strs)}")
+
+    system_prompt = (
+        "你是 TradeCamp 的 AI 交易教练，服务对象是股票投资零基础新手。\n"
+        "规则：\n"
+        "1. 用简体中文回答，语气温和鼓励但有建设性，用「你」称呼用户\n"
+        "2. 回答控制在 150 字以内，重点突出\n"
+        "3. 涉及具体概念时，用生活化类比解释\n"
+        "4. 绝不推荐具体股票或给出买卖建议，只教方法和纪律\n"
+        "5. 提醒风险时引用用户的真实交易数据（如果有）\n\n"
+        f"用户当前状态：\n" + "\n".join(ctx_lines)
+    )
+
+    # 组装消息（最近 10 轮）
+    messages = [{"role": "system", "content": system_prompt}]
+    for h in history[-10:]:
+        role = "user" if h.get("role") == "user" else "assistant"
+        messages.append({"role": role, "content": h.get("message", "")})
+    messages.append({"role": "user", "content": message})
+
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=messages,
+            max_tokens=300,
+            temperature=0.7,
+            timeout=8,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning(f"LLM 对话失败: {e}")
+        return ""
+
+
+__all__ = ["chat", "classify_question", "extract_term", "chat_with_llm"]

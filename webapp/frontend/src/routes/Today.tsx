@@ -42,6 +42,7 @@ export function Today() {
   const [loading, setLoading] = useState(true);
   const [showChat, setShowChat] = useState(false);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [proactive, setProactive] = useState<{ type: string; icon: string; title: string; message: string; action?: { label: string; link: string } }[]>([]);
 
   useEffect(() => {
     // 并行加载课程章节 + 真实学习统计
@@ -83,6 +84,12 @@ export function Today() {
       .then((r) => r.json())
       .then(setChallenge)
       .catch(() => {});
+
+    // v2.4: 加载主动关怀消息
+    fetch("/api/coach/proactive")
+      .then((r) => r.json())
+      .then(setProactive)
+      .catch(() => {});
   }, []);
 
   if (loading) {
@@ -118,6 +125,26 @@ export function Today() {
           {isDone && "现在可以探索全球市场，或者进入模拟练习来测试你的判断。"}
         </p>
       </div>
+
+      {/* 主动关怀横幅 (v2.4) */}
+      {proactive.map((msg) => (
+        <div key={msg.type}
+             className="glass-card overflow-hidden animate-[slideUp_0.4s_cubic-bezier(.22,1,.36,1)]">
+          <div className="bg-gradient-to-r from-emerald-500/12 to-teal-500/8 px-4 py-3 flex items-center gap-3">
+            <span className="text-xl">{msg.icon}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-fg">{msg.title}</p>
+              <p className="text-xs text-fg-muted mt-0.5">{msg.message}</p>
+            </div>
+            {msg.action && (
+              <Link to={msg.action.link}
+                    className="glass-btn px-3 py-1.5 rounded-full text-xs text-emerald-400 shrink-0">
+                {msg.action.label}
+              </Link>
+            )}
+          </div>
+        </div>
+      ))}
 
       {/* 主任务卡片 */}
       <div className="glass-card specular-edge p-6 space-y-4">

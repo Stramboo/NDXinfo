@@ -67,7 +67,8 @@ from webapp.backend.learning_content import STAGES, LESSONS, GLOSSARY, QUESTS  #
 from webapp.backend.explorer import MARKETS, COMPANIES, INDUSTRIES, get_market_status, get_companies  # noqa: E402
 from webapp.backend.practice import calc_position, calc_stop_loss, SCENARIOS, evaluate_scenario_decisions  # noqa: E402
 from webapp.backend.review_engine import create_trade_review, MISTAKE_PATTERNS  # noqa: E402
-from webapp.backend.coach_chat import chat as coach_chat  # noqa: E402
+from webapp.backend.coach_chat import chat as coach_chat, chat_with_llm, classify_question  # noqa: E402
+from webapp.backend.coach_proactive import generate_proactive_messages  # noqa: E402
 from webapp.backend.daily_challenge import get_daily_challenge, CHALLENGE_POOL  # noqa: E402
 from webapp.backend.xp_service import award_xp, get_level_info  # noqa: E402
 from webapp.backend.review_service import auto_review_on_sell  # noqa: E402
@@ -83,6 +84,10 @@ from webapp.backend.quiz_content import (  # noqa: E402
 
 # v2.4 Phase 2: 复盘自动触发（纯本地规则引擎，默认开）
 ENABLE_REVIEW_AUTO = os.environ.get("ENABLE_REVIEW_AUTO", "true").lower() == "true"
+# v2.4 Phase 6: 教练 LLM 增强（需 DEEPSEEK_API_KEY，默认关）
+ENABLE_COACH_LLM = os.environ.get("ENABLE_COACH_LLM", "false").lower() == "true"
+# v2.4 Phase 6: 主动关怀消息（纯规则，默认开）
+ENABLE_PROACTIVE_COACH = os.environ.get("ENABLE_PROACTIVE_COACH", "true").lower() == "true"
 from webapp.backend.ai_coach import TradeCoach, enhance_with_llm  # noqa: E402
 
 # v2.3 Phase 1: 真实数据 Provider（可选）
@@ -1027,25 +1032,77 @@ class ChatReq(BaseModel):
 
 @app.post("/api/coach/chat")
 def coach_chat_api(req: ChatReq) -> dict:
-    """AI 教练对话"""
+    """AI 教练对话（v2.4：历史持久化 + LLM 增强）"""
+    # 保存用户消息
+    qtype = classify_question(req.message)
+    try:
+        state.userstore.chat_save("user", req.message, qtype)
+    except Exception:
+        pass
+
     # 构建上下文
+    stats = state.userstore.get_learning_stats()
+    level_info = get_level_info(stats.get("total_xp", 0))
+    progress = state.userstore.learning_progress_list()
     context = {
         "glossary": GLOSSARY,
         "trades": state.userstore.sandbox_orders_list(10),
         "progress": {
-            "completed_lessons": len([p for p in state.userstore.learning_progress_list() if p.get("completed")]),
+            "completed_lessons": len([p for p in progress if p.get("completed")]),
             "total_lessons": 24,
-            "current_stage": 1,  # TODO: 从进度计算
+            "current_stage": 1,
         },
+        "level_name": level_info["level_name"],
+        "total_xp": stats.get("total_xp", 0),
+        "chapters_completed": len([p for p in progress if p.get("completed")]),
+        "recent_trades": state.userstore.sandbox_orders_list(5),
+        "recent_reviews": state.userstore.review_list(3),
     }
-    
-    response = coach_chat(req.message, context)
-    
+
+    # LLM 优先，规则兜底
+    response = ""
+    source = "rule"
+    if ENABLE_COACH_LLM:
+        try:
+            history = state.userstore.chat_history_list(10)
+            response = chat_with_llm(req.message, history, context)
+            if response:
+                source = "llm"
+        except Exception as e:
+            logger.warning(f"LLM 对话降级: {e}")
+    if not response:
+        response = coach_chat(req.message, context)
+
+    # 保存教练回复
+    try:
+        state.userstore.chat_save("assistant", response, qtype)
+    except Exception:
+        pass
+
     return {
         "message": req.message,
         "response": response,
+        "source": source,
         "ts": int(time.time() * 1000),
     }
+
+
+@app.get("/api/coach/chat/history")
+def get_chat_history(limit: int = 50) -> list[dict]:
+    """获取对话历史"""
+    return state.userstore.chat_history_list(limit)
+
+
+@app.get("/api/coach/proactive")
+def get_proactive_messages() -> list[dict]:
+    """获取教练主动关怀消息"""
+    if not ENABLE_PROACTIVE_COACH:
+        return []
+    try:
+        return generate_proactive_messages(state.userstore)
+    except Exception as e:
+        logger.warning(f"主动关怀生成失败: {e}")
+        return []
 
 
 # ---- 每日挑战 API (v2.3 Phase 5) ----
